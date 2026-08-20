@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sme-teal: #1B4B4F;
+  --color-sme-teal-dark: #123336;
+  --color-sme-teal-hover: #153B3E;
+  --color-sme-gold: #D9A441;
+  --color-sme-gold-hover: #C59336;
+  --color-sme-bg-light: #F7F7F5;
+  --color-sme-text-light: #1F2320;
+  --color-sme-bg-dark: #000000;
+  --color-sme-card-dark: #0A0A0A;
+}
+
+@layer base {
+  body {
+    @apply antialiased font-sans min-h-screen bg-[#000000];
+  }
+
+  /* Accessible keyboard focus ring */
+  *:focus-visible {
+    outline: 2px solid #D9A441 !important;
+    outline-offset: 2px !important;
+  }
+}
