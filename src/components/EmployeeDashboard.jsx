@@ -1,9 +1,10 @@
+import UserAvatar from './UserAvatar';
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import AttachmentViewer from './AttachmentViewer';
 
-export default function EmployeeDashboard({ userSession }) {
+export default function EmployeeDashboard({ userProfile, userSession }) {
   const { themeTokens: t } = useTheme();
   const [tasks, setTasks] = useState([]);
   const [timeLogs, setTimeLogs] = useState([]);
@@ -63,7 +64,7 @@ export default function EmployeeDashboard({ userSession }) {
       const existingAtts = attachmentsMap[taskId] || [];
 
       if (!file && existingAtts.length === 0) {
-        alert('Proof Attachment Required! Please select a file (image or document) to attach before submitting for review.');
+        alert('Proof Attachment Required! Please select a proof file (document, PDF, spreadsheet, image, archive, code file, etc.) to attach before submitting for review.');
         return;
       }
 
@@ -227,11 +228,19 @@ export default function EmployeeDashboard({ userSession }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Header */}
       <div className={`${t.cardBg} p-6 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm`}>
-        <div>
-          <h2 className={`text-xl font-bold ${t.heading} tracking-tight`}>My Assigned Tasks</h2>
-          <p className={`text-xs ${t.muted} mt-1`}>
-            Update task progress, log work minutes, attach proof files, and submit for manager review.
-          </p>
+        <div className="flex items-center gap-3.5">
+          <UserAvatar
+            src={userProfile?.avatar_url || userSession?.user?.user_metadata?.avatar_url}
+            name={userProfile?.full_name || userSession?.user?.user_metadata?.full_name}
+            role="employee"
+            size="lg"
+          />
+          <div>
+            <h2 className={`text-xl font-bold ${t.heading} tracking-tight`}>My Assigned Tasks</h2>
+            <p className={`text-xs ${t.muted} mt-0.5`}>
+              Update task progress, log work minutes, attach proof files, and submit for manager review.
+            </p>
+          </div>
         </div>
         {msg && (
           <div className="px-3.5 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5">
@@ -388,13 +397,19 @@ export default function EmployeeDashboard({ userSession }) {
                     {task.status === 'in_progress' && (
                       <div className="space-y-2">
                         <label className={`block text-[10px] font-bold uppercase tracking-wider ${t.muted}`}>
-                          Attach Proof File (Required for Submission)
+                          Attach Proof File (PDF, Document, Image, Sheet, Code, etc.)
                         </label>
                         <input
                           type="file"
                           onChange={(e) => setFileInput({ ...fileInput, [task.id]: e.target.files[0] })}
                           className={`w-full text-xs ${t.muted} file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#1B4B4F] file:text-white hover:file:bg-[#153B3E] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#D9A441]`}
                         />
+                        {fileInput[task.id] && (
+                          <div className="px-2.5 py-1 rounded-lg bg-[#D9A441]/10 border border-[#D9A441]/30 text-xs font-semibold text-[#D9A441] flex items-center justify-between gap-2">
+                            <span className="truncate">Selected: <strong>{fileInput[task.id].name}</strong></span>
+                            <span className="text-[10px] opacity-75 shrink-0">({(fileInput[task.id].size / 1024).toFixed(0)} KB)</span>
+                          </div>
+                        )}
                         <button
                           onClick={() => handleStatusChange(task.id, 'in_progress', 'submitted')}
                           disabled={submittingTaskId === task.id}

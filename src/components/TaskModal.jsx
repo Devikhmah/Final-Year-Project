@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
-export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSaved }) {
+export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSaved, defaultAssigneeId }) {
   const { themeTokens: t } = useTheme();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -25,10 +25,10 @@ export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSa
       setDescription('');
       setCategory('Operations');
       setPriority('medium');
-      setAssignedTo(employees[0]?.id || '');
+      setAssignedTo(defaultAssigneeId || employees[0]?.id || '');
       setDeadline('');
     }
-  }, [taskToEdit, employees, isOpen]);
+  }, [taskToEdit, employees, isOpen, defaultAssigneeId]);
 
   if (!isOpen) return null;
 

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import authBg from '../assets/auth-bg.jpg';
 import { supabase } from '../lib/supabase';
+import AcceptInvite from './AcceptInvite';
 
 export default function Auth() {
-  // Mode can be: 'login' | 'employee_signup' | 'manager_signup'
+  // Mode can be: 'login' | 'manager_signup'
   const [authMode, setAuthMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -12,6 +13,27 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [invitationId, setInvitationId] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteParam = params.get('invite') || params.get('invitation_id');
+    if (inviteParam) {
+      setInvitationId(inviteParam);
+    }
+  }, []);
+
+  if (invitationId) {
+    return (
+      <AcceptInvite
+        invitationId={invitationId}
+        onReturnToLogin={() => {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setInvitationId(null);
+        }}
+      />
+    );
+  }
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -20,28 +42,7 @@ export default function Auth() {
     setSuccessMsg('');
 
     try {
-      if (authMode === 'employee_signup') {
-        if (!fullName.trim()) {
-          throw new Error('Please enter your full name');
-        }
-
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-              role: 'employee',
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        if (data?.user) {
-          setSuccessMsg('Employee account created successfully! Logging you in...');
-        }
-      } else if (authMode === 'manager_signup') {
+      if (authMode === 'manager_signup') {
         if (!fullName.trim()) {
           throw new Error('Please enter your full name');
         }
@@ -100,7 +101,7 @@ export default function Auth() {
 
   return (
     <div 
-      className="min-h-screen flex items-center justify-center p-4 relative bg-[#000000] bg-cover bg-center bg-no-repeat"
+      className="min-h-screen flex items-center justify-center p-4 relative bg-[#000000] bg-cover bg-center bg-no-repeat font-sans"
       style={{ backgroundImage: `url(${authBg})` }}
     >
       {/* Overlay */}
@@ -117,29 +118,22 @@ export default function Auth() {
           <p className="text-xs text-slate-300">
             {authMode === 'login'
               ? 'Sign in to access your dashboard'
-              : authMode === 'employee_signup'
-              ? 'Create your Employee account'
               : 'Register Manager Account (Access Code Required)'}
           </p>
         </div>
 
-        {/* Tab Selector */}
-        <div className="grid grid-cols-2 p-1 bg-[#000000] rounded-lg border border-[#1F1F1F]">
-          <button
-            type="button"
-            onClick={() => switchMode('login')}
-            className={`py-2 text-xs font-bold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#D9A441] ${authMode === 'login' ? 'bg-[#D9A441] text-[#000000] shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode('employee_signup')}
-            className={`py-2 text-xs font-bold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-[#D9A441] ${authMode === 'employee_signup' ? 'bg-[#D9A441] text-[#000000] shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            Sign Up
-          </button>
-        </div>
+        {/* Closed Public Employee Registration Banner */}
+        {authMode === 'login' && (
+          <div className="p-3.5 rounded-lg bg-[#1B4B4F]/20 border border-[#D9A441]/20 text-[11px] text-slate-300 flex items-start gap-2">
+            <svg className="w-4 h-4 shrink-0 text-[#D9A441] mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <strong className="text-white block font-bold">Employee Registration Notice:</strong>
+              Public employee signup is closed. Employees can only create an account by accepting an official Manager Invitation link.
+            </div>
+          </div>
+        )}
 
         {/* Alert Messages */}
         {errorMsg && (
@@ -162,7 +156,7 @@ export default function Auth() {
 
         {/* Form */}
         <form onSubmit={handleAuth} className="space-y-4">
-          {authMode !== 'login' && (
+          {authMode === 'manager_signup' && (
             <div>
               <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
                 Full Name
@@ -231,8 +225,6 @@ export default function Auth() {
             <span>
               {authMode === 'login'
                 ? 'Sign In'
-                : authMode === 'employee_signup'
-                ? 'Create Employee Account'
                 : 'Create Manager Account'}
             </span>
             {loading ? (
@@ -257,10 +249,10 @@ export default function Auth() {
           ) : (
             <button
               type="button"
-              onClick={() => switchMode('employee_signup')}
+              onClick={() => switchMode('login')}
               className="text-[11px] font-medium text-slate-400 hover:text-white transition-colors focus:outline-none"
             >
-              Back to <span className="underline font-bold">Standard Employee Sign Up</span>
+              Already have an account? <span className="underline font-bold">Sign In</span>
             </button>
           )}
         </div>

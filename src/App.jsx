@@ -8,12 +8,15 @@ import Auth from './components/Auth';
 import ManagerDashboard from './components/ManagerDashboard';
 import EmployeeDashboard from './components/EmployeeDashboard';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import EmployeesDashboard from './components/EmployeesDashboard';
 import ProfilePage from './components/ProfilePage';
+import RejectedTasksDashboard from './components/RejectedTasksDashboard';
 
 function MainApp() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -71,10 +74,12 @@ function MainApp() {
 
       setProfile(data);
 
-      // Fetch pending review count for managers
-      if (data?.role === 'manager' || user?.user_metadata?.role === 'manager') {
+      const userRole = data?.role || user?.user_metadata?.role || 'employee';
+
+      if (userRole === 'manager') {
         fetchPendingCount();
       }
+      fetchRejectedCount(user.id, userRole);
     } catch (err) {
       console.error('Profile fetch error:', err);
     } finally {
@@ -91,6 +96,22 @@ function MainApp() {
       setPendingReviewCount((data || []).length);
     } catch (err) {
       console.error('Pending count fetch error:', err);
+    }
+  };
+
+  const fetchRejectedCount = async (userId, role) => {
+    try {
+      let query = supabase.from('tasks').select('id, status, rejection_note');
+      if (role === 'employee') {
+        query = query.eq('assigned_to', userId);
+      }
+      const { data } = await query;
+      const count = (data || []).filter(
+        (t) => t.status === 'rejected' || (t.rejection_note && t.rejection_note.trim() !== '')
+      ).length;
+      setRejectedCount(count);
+    } catch (err) {
+      console.error('Rejected count fetch error:', err);
     }
   };
 
@@ -116,7 +137,7 @@ function MainApp() {
   const role = profile?.role || session?.user?.user_metadata?.role || 'employee';
 
   return (
-    <div className={`min-h-screen ${themeTokens.bg} ${themeTokens.text} flex flex-col md:flex-row font-sans transition-colors duration-200`}>
+    <div className={`h-screen overflow-hidden ${themeTokens.bg} ${themeTokens.text} flex flex-col md:flex-row font-sans transition-colors duration-200`}>
       {/* Sidebar Navigation */}
       <Sidebar
         userProfile={profile}
@@ -124,6 +145,7 @@ function MainApp() {
         currentView={currentView}
         setCurrentView={setCurrentView}
         pendingReviewCount={pendingReviewCount}
+        rejectedCount={rejectedCount}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
       />
@@ -140,14 +162,22 @@ function MainApp() {
             userSession={session}
             onProfileUpdated={fetchUserProfile}
           />
+        ) : currentView === 'rejected' ? (
+          <RejectedTasksDashboard
+            userProfile={profile}
+            userSession={session}
+            onTaskUpdated={() => fetchRejectedCount(session.user.id, role)}
+          />
         ) : role === 'manager' ? (
           currentView === 'analytics' ? (
             <AnalyticsDashboard userProfile={profile} userSession={session} />
+          ) : currentView === 'employees' ? (
+            <EmployeesDashboard userProfile={profile} userSession={session} />
           ) : (
-            <ManagerDashboard userSession={session} />
+            <ManagerDashboard userProfile={profile} userSession={session} />
           )
         ) : (
-          <EmployeeDashboard userSession={session} />
+          <EmployeeDashboard userProfile={profile} userSession={session} />
         )}
       </main>
     </div>

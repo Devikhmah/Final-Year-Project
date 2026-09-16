@@ -5,7 +5,7 @@ import VelocityMetrics from './VelocityMetrics';
 import CategoryMixChart from './CategoryMixChart';
 import UtilizationTable from './UtilizationTable';
 
-export default function AnalyticsDashboard() {
+export default function AnalyticsDashboard({ userProfile, userSession }) {
   const { themeTokens: t } = useTheme();
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -17,14 +17,24 @@ export default function AnalyticsDashboard() {
   const [aiInsight, setAiInsight] = useState(null);
   const [aiError, setAiError] = useState(null);
 
+  const currentManagerId = userProfile?.id || userSession?.user?.id;
+
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentManagerId) {
+      fetchData();
+    }
+  }, [currentManagerId]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: usersData } = await supabase.from('users').select('*');
+      // Query users belonging specifically to this manager's team
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'employee')
+        .eq('manager_id', currentManagerId);
+
       setEmployees(usersData || []);
 
       const { data: tasksData } = await supabase.from('tasks').select('*');
@@ -123,7 +133,7 @@ export default function AnalyticsDashboard() {
       if (result.success) {
         setAiInsight(result.insightText);
       } else {
-        setAiError(result.error || 'Unable to generate executive insight at this moment. Please verify your connection or API setup.');
+        setAiError(result.error || 'Unable to generate executive insight at this moment.');
       }
     } catch (err) {
       setAiError('Unable to generate executive insight at this moment: ' + err.message);
@@ -133,7 +143,7 @@ export default function AnalyticsDashboard() {
   };
 
   const handleSeedSampleData = async () => {
-    if (!window.confirm('Generate sample tasks and time logs for testing analytics?')) return;
+    if (!window.confirm('Generate sample tasks and time logs for testing analytics on your team?')) return;
     setLoading(true);
     try {
       const sampleTasks = [
@@ -164,7 +174,7 @@ export default function AnalyticsDashboard() {
         <div>
           <h2 className={`text-xl font-bold ${t.heading} tracking-tight`}>Productivity Analytics</h2>
           <p className={`text-xs ${t.muted} mt-1`}>
-            Manager Insights: Task completion velocity, time allocation mix, and workload utilization.
+            Team Insights: Task completion velocity, time allocation mix, and workload utilization for your team.
           </p>
         </div>
 
@@ -172,7 +182,7 @@ export default function AnalyticsDashboard() {
           <button
             onClick={handleGenerateInsight}
             disabled={generatingInsight}
-            className="px-4 py-2 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#1B4B4F]"
+            className="px-4 py-2 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow flex items-center gap-2 disabled:opacity-50"
           >
             <span>
               {generatingInsight
@@ -188,7 +198,7 @@ export default function AnalyticsDashboard() {
 
           <button
             onClick={handleSeedSampleData}
-            className={`px-3 py-2 ${t.accentBg} ${t.text} text-xs font-bold rounded-xl border ${t.border} transition-all hover:opacity-80 flex items-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-[#D9A441]`}
+            className={`px-3 py-2 ${t.accentBg} ${t.text} text-xs font-bold rounded-xl border ${t.border} transition-all hover:opacity-80 flex items-center gap-1.5` }
           >
             <span>Add Sample Data</span>
             <svg className="w-4 h-4 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -199,7 +209,7 @@ export default function AnalyticsDashboard() {
           <div className={`flex items-center gap-1 p-1 ${t.inputBg} rounded-xl border ${t.border} text-xs`}>
             <button
               onClick={() => handleTimeWindowChange('week')}
-              className={`px-3 py-1.5 font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#D9A441] ${
+              className={`px-3 py-1.5 font-bold rounded-lg transition-colors ${
                 timeWindow === 'week' ? 'bg-[#1B4B4F] text-white shadow' : `${t.muted} hover:${t.heading}`
               }`}
             >
@@ -207,7 +217,7 @@ export default function AnalyticsDashboard() {
             </button>
             <button
               onClick={() => handleTimeWindowChange('month')}
-              className={`px-3 py-1.5 font-bold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-[#D9A441] ${
+              className={`px-3 py-1.5 font-bold rounded-lg transition-colors ${
                 timeWindow === 'month' ? 'bg-[#1B4B4F] text-white shadow' : `${t.muted} hover:${t.heading}`
               }`}
             >
@@ -222,7 +232,7 @@ export default function AnalyticsDashboard() {
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-[#D9A441] border-t-transparent rounded-full animate-spin"></div>
             <span className="text-sm font-bold text-[#D9A441]">
-              Analyzing workforce metrics & generating AI {timeWindow === 'week' ? 'weekly' : 'monthly'} insight...
+              Analyzing workforce metrics & generating AI ${timeWindow === 'week' ? 'weekly' : 'monthly'} insight...
             </span>
           </div>
         </div>
@@ -239,7 +249,7 @@ export default function AnalyticsDashboard() {
             </div>
             <button
               onClick={() => setAiError(null)}
-              className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D9A441]"
+              className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg"
             >
               Dismiss
             </button>
@@ -252,21 +262,16 @@ export default function AnalyticsDashboard() {
         <div className="bg-[#1B4B4F]/20 border border-[#D9A441]/40 p-6 rounded-2xl space-y-3 shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[#D9A441] font-bold text-sm">
-              <span>Gemini AI Executive {timeWindow === 'week' ? 'Weekly' : 'Monthly'} Productivity Insight</span>
+              <span>Gemini AI Executive ${timeWindow === 'week' ? 'Weekly' : 'Monthly'} Productivity Insight</span>
               <svg className="w-4 h-4 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
-              <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-[#D9A441]/20 text-[#D9A441] border border-[#D9A441]/30">
-                {timeWindow === 'week' ? 'This Week' : 'This Month'}
-              </span>
             </div>
             <button
               onClick={() => setAiInsight(null)}
               className="text-xs text-slate-400 hover:text-white"
             >
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              ✕
             </button>
           </div>
           <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium">

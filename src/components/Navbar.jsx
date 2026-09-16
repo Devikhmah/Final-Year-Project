@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function Navbar({ setMobileOpen }) {
   return (
-    <header className="h-14 bg-[#1B4B4F] border-b border-[#153B3E] px-4 flex items-center justify-between md:hidden sticky top-0 z-30 shadow-md">
+    <header className="h-14 shrink-0 bg-[#1B4B4F] border-b border-[#153B3E] px-4 flex items-center justify-between md:hidden sticky top-0 z-30 shadow-md">
       <div className="flex items-center gap-3">
         <button
           onClick={() => setMobileOpen(true)}

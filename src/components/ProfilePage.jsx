@@ -1,13 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import UserAvatar from './UserAvatar';
 
 export default function ProfilePage({ userProfile, userSession, onProfileUpdated }) {
-  const { themeTokens: t } = useTheme();
+  const { theme, setTheme, themeTokens: t } = useTheme();
+  const fileInputRef = useRef(null);
 
   const userId = userSession?.user?.id;
   const currentEmail = userSession?.user?.email || userProfile?.email || '';
   const currentRole = userProfile?.role || userSession?.user?.user_metadata?.role || 'employee';
+
+  // Profile Picture State
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState('');
+  const [avatarErr, setAvatarErr] = useState('');
 
   // Basic Info Form States
   const [fullName, setFullName] = useState('');
@@ -42,17 +50,20 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     avgTimeHours: '0.0',
   });
 
-  // Re-sync user info when userProfile or userSession changes
   useEffect(() => {
     const initialName = userProfile?.full_name || userSession?.user?.user_metadata?.full_name || '';
+    const initialAvatar = userProfile?.avatar_url || userSession?.user?.user_metadata?.avatar_url || '';
     setFullName(initialName);
+    setAvatarUrl(initialAvatar);
     setNameMsg('');
     setNameErr('');
     setEmailMsg('');
     setEmailErr('');
     setPassMsg('');
     setPassErr('');
-  }, [userId, userProfile]);
+    setAvatarMsg('');
+    setAvatarErr('');
+  }, [userId, userProfile, userSession]);
 
   useEffect(() => {
     if (userId) {
@@ -64,7 +75,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     setLoadingMetrics(true);
     try {
       if (currentRole === 'employee') {
-        // Fetch tasks assigned strictly to logged-in employee
         const { data: empTasks } = await supabase
           .from('tasks')
           .select('*')
@@ -74,7 +84,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
         const completed = tasksList.filter((t) => t.status === 'done');
         const active = tasksList.filter((t) => t.status === 'in_progress' || t.status === 'submitted');
 
-        // Calculate On-Time Rate for employee
         let onTimeCount = 0;
         completed.forEach((task) => {
           if (!task.deadline) onTimeCount++;
@@ -82,7 +91,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
         });
         const onTimePercentage = completed.length > 0 ? Math.round((onTimeCount / completed.length) * 100) : 100;
 
-        // Fetch logged-in employee time logs
         const { data: logs } = await supabase
           .from('time_logs')
           .select('*')
@@ -91,7 +99,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
         const logsList = logs || [];
         const allTimeMins = logsList.reduce((sum, l) => sum + (l.minutes_logged || 0), 0);
 
-        // This month cutoff
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
@@ -109,7 +116,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
           onTimeRate: onTimePercentage.toString(),
         }));
       } else {
-        // Manager personal stats: count team users and manager activity
         const { data: teamUsers } = await supabase
           .from('users')
           .select('*')
@@ -151,7 +157,115 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     }
   };
 
-  // 1. Update Full Name
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarErr('Please select a valid image file (PNG, JPG, WEBP, GIF).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarErr('Image file size must be less than 5MB.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setAvatarMsg('');
+    setAvatarErr('');
+
+    try {
+      let publicUrl = '';
+
+      // Try uploading to Supabase Storage bucket 'avatars'
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${userId}/${Date.now()}.${fileExt}`;
+
+      let { error: uploadErr } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadErr && uploadErr.message?.toLowerCase().includes('bucket not found')) {
+        await supabase.storage.createBucket('avatars', { public: true });
+        const retryRes = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, { upsert: true });
+        uploadErr = retryRes.error;
+      }
+
+      if (!uploadErr) {
+        const { data: urlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+        publicUrl = urlData.publicUrl;
+      } else {
+        // Fallback to Data URL if storage bucket fails or isn't enabled
+        publicUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      // 1. Update Supabase Auth User Metadata
+      await supabase.auth.updateUser({
+        data: { avatar_url: publicUrl },
+      });
+
+      // 2. Update public.users table
+      const { error: dbErr } = await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', userId);
+
+      if (dbErr && !dbErr.message?.includes('avatar_url')) {
+        console.warn('DB update note:', dbErr.message);
+      }
+
+      setAvatarUrl(publicUrl);
+      setAvatarMsg('✓ Profile picture updated successfully!');
+
+      if (onProfileUpdated && userSession?.user) {
+        onProfileUpdated(userSession.user);
+      }
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      setAvatarErr('Failed to upload profile picture: ' + err.message);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!avatarUrl) return;
+    if (!window.confirm('Are you sure you want to remove your profile picture?')) return;
+
+    setUploadingAvatar(true);
+    setAvatarMsg('');
+    setAvatarErr('');
+
+    try {
+      await supabase.auth.updateUser({
+        data: { avatar_url: null },
+      });
+
+      await supabase.from('users').update({ avatar_url: null }).eq('id', userId);
+
+      setAvatarUrl('');
+      setAvatarMsg('✓ Profile picture removed. Default initials avatar restored.');
+
+      if (onProfileUpdated && userSession?.user) {
+        onProfileUpdated(userSession.user);
+      }
+    } catch (err) {
+      setAvatarErr('Failed to remove picture: ' + err.message);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleUpdateName = async (e) => {
     e.preventDefault();
     if (!fullName.trim()) return;
@@ -183,7 +297,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     }
   };
 
-  // 2. Request Email Change Flow
   const handleRequestEmailChange = async (e) => {
     e.preventDefault();
     if (!newEmail.trim() || newEmail.trim() === currentEmail) return;
@@ -210,7 +323,6 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     }
   };
 
-  // 3. Update Password
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
     if (!newPassword) return;
@@ -261,26 +373,122 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     : 'August 2026';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Header Banner */}
-      <div className={`${t.cardBg} p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm`}>
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#D9A441] text-[#0D1B1E] flex items-center justify-center font-bold text-xl shadow-md shrink-0">
-            {fullName.charAt(0).toUpperCase() || 'U'}
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 font-sans">
+      {/* Header Banner & Profile Picture Management */}
+      <div className={`${t.cardBg} p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm border ${t.border}`}>
+        <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-5">
+          {/* Avatar Container with Interactive Edit Overlay */}
+          <div className="relative group shrink-0">
+            <UserAvatar
+              src={avatarUrl}
+              name={fullName}
+              role={currentRole}
+              size="2xl"
+              showRoleBadge
+              className="ring-4 ring-[#D9A441]/20 rounded-3xl"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl flex flex-col items-center justify-center text-white text-[11px] font-bold cursor-pointer backdrop-blur-[1px]"
+              title="Upload / Change Profile Picture"
+            >
+              <svg className="w-6 h-6 mb-1 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>{uploadingAvatar ? 'Uploading...' : 'Change Photo'}</span>
+            </button>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleAvatarUpload}
+              accept="image/png, image/jpeg, image/webp, image/gif"
+              className="hidden"
+            />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className={`text-xl font-bold ${t.heading} tracking-tight`}>{fullName || 'Account User'}</h2>
-              <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full ${
+
+          <div className="text-center sm:text-left">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+              <h2 className={`text-2xl font-bold ${t.heading} tracking-tight`}>{fullName || 'Account User'}</h2>
+              <span className={`px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full ${
                 currentRole === 'manager' ? 'text-amber-300 bg-amber-500/20 border border-amber-500/30' : 'text-teal-300 bg-teal-500/20 border border-teal-500/30'
               }`}>
                 Role: {currentRole}
               </span>
             </div>
-            <p className={`text-xs ${t.muted} mt-1`}>
-              Member since {memberSinceDate} • Registered Email: <strong className={t.heading}>{currentEmail}</strong>
+            <p className={`text-xs ${t.muted} mt-1.5`}>
+              Member since {memberSinceDate} • Email: <strong className={t.heading}>{currentEmail}</strong>
             </p>
+
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="px-3.5 py-1.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span>{uploadingAvatar ? 'Uploading Photo...' : 'Upload Profile Picture'}</span>
+              </button>
+
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  disabled={uploadingAvatar}
+                  className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Remove Photo</span>
+                </button>
+              )}
+            </div>
+
+            {avatarMsg && <p className="text-xs font-semibold text-emerald-400 mt-2">{avatarMsg}</p>}
+            {avatarErr && <p className="text-xs font-semibold text-rose-400 mt-2">{avatarErr}</p>}
           </div>
+        </div>
+      </div>
+
+      {/* Theme Display Settings Section */}
+      <div className={`${t.cardBg} p-6 rounded-2xl space-y-4 shadow-sm border ${t.border}`}>
+        <div>
+          <h3 className={`text-base font-bold ${t.heading}`}>Appearance & Application Theme</h3>
+          <p className={`text-xs ${t.muted} mt-1`}>Select your preferred visual style. Settings save automatically across your devices.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <button
+            type="button"
+            onClick={() => setTheme('dark')}
+            className={`p-4 rounded-xl border flex items-center justify-center transition-all cursor-pointer text-sm font-bold ${
+              theme === 'dark'
+                ? 'border-[#D9A441] bg-[#D9A441]/10 ring-2 ring-[#D9A441]/40 text-[#D9A441]'
+                : `${t.border} bg-black/20 hover:border-slate-400 ${t.heading}`
+            }`}
+          >
+            Dark Mode
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme('light')}
+            className={`p-4 rounded-xl border flex items-center justify-center transition-all cursor-pointer text-sm font-bold ${
+              theme === 'light'
+                ? 'border-[#D9A441] bg-[#D9A441]/10 ring-2 ring-[#D9A441]/40 text-[#D9A441]'
+                : `${t.border} bg-black/20 hover:border-slate-400 ${t.heading}`
+            }`}
+          >
+            Light Mode
+          </button>
         </div>
       </div>
 
@@ -406,7 +614,7 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
                 type="email"
                 disabled
                 value={currentEmail}
-                className={`w-full px-3.5 py-2 ${t.inputBg} border ${t.border} rounded-xl ${t.muted} text-xs opacity-75 cursor-not-allowed` }
+                className={`w-full px-3.5 py-2 ${t.inputBg} border ${t.border} rounded-xl ${t.muted} text-xs opacity-75 cursor-not-allowed`}
               />
             </div>
 

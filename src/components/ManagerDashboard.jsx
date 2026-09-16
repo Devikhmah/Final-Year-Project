@@ -1,3 +1,4 @@
+import UserAvatar from './UserAvatar';
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -5,7 +6,7 @@ import TaskModal from './TaskModal';
 import AttachmentViewer from './AttachmentViewer';
 import RejectionModal from './RejectionModal';
 
-export default function ManagerDashboard() {
+export default function ManagerDashboard({ userProfile, userSession }) {
   const { themeTokens: t } = useTheme();
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -24,17 +25,32 @@ export default function ManagerDashboard() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [taskToReject, setTaskToReject] = useState(null);
 
+  const currentManagerId = userProfile?.id || userSession?.user?.id;
+
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentManagerId) {
+      fetchData();
+    }
+  }, [currentManagerId]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: usersData } = await supabase.from('users').select('*').order('full_name');
+      // Fetch only employees belonging to this manager's team
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'employee')
+        .eq('manager_id', currentManagerId)
+        .order('full_name');
+
       setEmployees(usersData || []);
 
-      const { data: tasksData } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+      const { data: tasksData } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       setTasks(tasksData || []);
 
       const { data: logsData } = await supabase.from('time_logs').select('*');
@@ -148,12 +164,12 @@ export default function ManagerDashboard() {
         <div>
           <h2 className={`text-xl font-bold ${t.heading} tracking-tight`}>Manager Overview & Task Review</h2>
           <p className={`text-xs ${t.muted} mt-1`}>
-            Assign tasks, review proof submissions, approve finished work, or provide feedback notes.
+            Assign tasks to your team members, review submitted proofs, and manage workflow performance.
           </p>
         </div>
         <button
           onClick={() => { setTaskToEdit(null); setIsTaskModalOpen(true); }}
-          className="px-4 py-2.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B4B4F] flex items-center gap-1.5 shrink-0"
+          className="px-4 py-2.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0"
         >
           <span>Create New Task</span>
           <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -183,14 +199,14 @@ export default function ManagerDashboard() {
 
         <div>
           <label className={`block text-[10px] font-bold uppercase tracking-wider ${t.muted} mb-1`}>
-            Filter by Assignee
+            Filter by Team Assignee
           </label>
           <select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value)}
             className={`w-full px-3 py-1.5 ${t.inputBg} border ${t.inputBorder} rounded-lg ${t.text} text-xs focus:outline-none focus:ring-2 focus:ring-[#D9A441]`}
           >
-            <option value="all">All Employees</option>
+            <option value="all">All Team Members</option>
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>{emp.full_name}</option>
             ))}
@@ -215,7 +231,7 @@ export default function ManagerDashboard() {
       {loading ? (
         <div className={`p-12 text-center ${t.muted} text-sm`}>
           <div className="w-6 h-6 border-2 border-[#D9A441] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-          Loading tasks...
+          Loading team tasks...
         </div>
       ) : filteredTasks.length === 0 ? (
         <div className={`p-12 text-center ${t.cardBg} rounded-2xl space-y-2`}>
@@ -236,7 +252,6 @@ export default function ManagerDashboard() {
                 className={`${t.cardBg} rounded-xl p-5 flex flex-col justify-between space-y-4 shadow-sm ${t.cardHover}`}
               >
                 <div className="space-y-3">
-                  {/* Category & Status */}
                   <div className="flex items-center justify-between gap-2">
                     <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded ${t.accentBg} ${t.text} border ${t.border}`}>
                       {task.category || 'General'}
@@ -246,7 +261,6 @@ export default function ManagerDashboard() {
                     </span>
                   </div>
 
-                  {/* Title & Description */}
                   <div>
                     <h3 className={`text-base font-bold ${t.heading} leading-snug`}>{task.title}</h3>
                     {task.description && (
@@ -254,7 +268,6 @@ export default function ManagerDashboard() {
                     )}
                   </div>
 
-                  {/* Rejection Feedback Note Preview */}
                   {task.rejection_note && (
                     <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-lg text-xs text-rose-300">
                       <strong className="block text-[10px] font-bold uppercase text-rose-400">Rejection Feedback Note:</strong>
@@ -262,23 +275,23 @@ export default function ManagerDashboard() {
                     </div>
                   )}
 
-                  {/* Attachment Proof Viewer */}
                   <AttachmentViewer attachments={attachments} />
                 </div>
 
-                {/* Footer Actions */}
                 <div className={`pt-3 border-t ${t.border} space-y-3`}>
                   <div className={`flex items-center justify-between text-xs ${t.muted}`}>
-                    <span>Assigned to: <strong className={t.heading}>{assignee?.full_name || 'Unassigned'}</strong></span>
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <UserAvatar src={assignee?.avatar_url} name={assignee?.full_name || 'Unassigned'} size="xs" />
+                      <span className="truncate">Assigned to: <strong className={t.heading}>{assignee?.full_name || 'Unassigned'}</strong></span>
+                    </div>
                     <span className="text-[#D9A441] font-semibold">{totalMins} mins</span>
                   </div>
 
-                  {/* Review Actions for Submitted Tasks */}
                   {task.status === 'submitted' ? (
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         onClick={() => handleApprove(task.id)}
-                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors shadow flex items-center justify-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors shadow flex items-center justify-center gap-1.5"
                       >
                         <span>Approve Task</span>
                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -287,7 +300,7 @@ export default function ManagerDashboard() {
                       </button>
                       <button
                         onClick={() => { setTaskToReject(task); setIsRejectModalOpen(true); }}
-                        className="py-1.5 px-3 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition-colors shadow flex items-center justify-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                        className="py-1.5 px-3 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition-colors shadow flex items-center justify-center gap-1.5"
                       >
                         <span>Reject Task</span>
                         <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -299,7 +312,7 @@ export default function ManagerDashboard() {
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         onClick={() => { setTaskToEdit(task); setIsTaskModalOpen(true); }}
-                        className={`px-3 py-1 ${t.accentBg} ${t.text} text-[11px] font-semibold rounded border ${t.border} hover:opacity-80 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-[#D9A441]`}
+                        className={`px-3 py-1 ${t.accentBg} ${t.text} text-[11px] font-semibold rounded border ${t.border} hover:opacity-80 flex items-center gap-1`}
                       >
                         <span>Edit</span>
                         <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -308,7 +321,7 @@ export default function ManagerDashboard() {
                       </button>
                       <button
                         onClick={() => handleDeleteTask(task.id)}
-                        className="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold rounded border border-rose-500/20 flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                        className="px-3 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-semibold rounded border border-rose-500/20 flex items-center gap-1"
                       >
                         <span>Delete</span>
                         <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
