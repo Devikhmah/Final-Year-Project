@@ -19,6 +19,8 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
   const [msg, setMsg] = useState('');
   const [bucketAlert, setBucketAlert] = useState(false);
   const [rlsAlert, setRlsAlert] = useState(false);
+  const [pendingTeamInvite, setPendingTeamInvite] = useState(null);
+  const [inviteActionLoading, setInviteActionLoading] = useState(false);
 
   const userId = userSession?.user?.id;
 
@@ -51,10 +53,96 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
         attMap[att.task_id].push(att);
       });
       setAttachmentsMap(attMap);
+
+      // Check for pending team invitations for this employee's email
+      const userEmail = userProfile?.email || userSession?.user?.email;
+      if (userEmail) {
+        try {
+          const { data: invList } = await supabase
+            .from('invitations')
+            .select('*')
+            .eq('email', userEmail.toLowerCase())
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+          if (invList && invList.length > 0) {
+            const firstInv = invList[0];
+            let mgrName = 'Your Manager';
+            if (firstInv.manager_id) {
+              const { data: mgr } = await supabase
+                .from('users')
+                .select('full_name, email')
+                .eq('id', firstInv.manager_id)
+                .maybeSingle();
+              if (mgr?.full_name) mgrName = mgr.full_name;
+            }
+            setPendingTeamInvite({ ...firstInv, managerName: mgrName });
+          } else {
+            setPendingTeamInvite(null);
+          }
+        } catch (e) {
+          // Invitations table may not exist in schema cache yet, safe to ignore
+        }
+      }
     } catch (err) {
       console.error('Error loading employee dashboard:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAcceptTeamInvite = async (inv) => {
+    setInviteActionLoading(true);
+    try {
+      const { error: userErr } = await supabase
+        .from('users')
+        .update({ manager_id: inv.manager_id })
+        .eq('id', userId);
+
+      if (userErr) throw userErr;
+
+      try {
+        await supabase
+          .from('invitations')
+          .update({
+            status: 'confirmed',
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', inv.id);
+      } catch (e) {
+        console.warn('Invitations status update warning:', e);
+      }
+
+      setMsg(`✓ Successfully joined ${inv.managerName}'s team!`);
+      setPendingTeamInvite(null);
+      fetchData();
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err) {
+      alert('Failed to accept invitation: ' + err.message);
+    } finally {
+      setInviteActionLoading(false);
+    }
+  };
+
+  const handleDeclineTeamInvite = async (invId) => {
+    if (!window.confirm('Are you sure you want to decline this team invitation?')) return;
+    setInviteActionLoading(true);
+    try {
+      await supabase
+        .from('invitations')
+        .update({
+          status: 'declined',
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', invId);
+      setPendingTeamInvite(null);
+    } catch (e) {
+      console.warn('Decline error:', e);
+      setPendingTeamInvite(null);
+    } finally {
+      setInviteActionLoading(false);
     }
   };
 
@@ -251,6 +339,43 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
           </div>
         )}
       </div>
+
+      {/* Pending Team Invitation Banner for Existing User */}
+      {pendingTeamInvite && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                Team Invitation from {pendingTeamInvite.managerName}
+              </p>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300/80 mt-0.5">
+                You have been invited to join <strong>{pendingTeamInvite.managerName}</strong>'s workforce team as an employee.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => handleDeclineTeamInvite(pendingTeamInvite.id)}
+              disabled={inviteActionLoading}
+              className="px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-500/30 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => handleAcceptTeamInvite(pendingTeamInvite)}
+              disabled={inviteActionLoading}
+              className="px-4 py-1.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] rounded-xl text-xs font-bold shadow transition-colors disabled:opacity-50"
+            >
+              {inviteActionLoading ? 'Joining...' : 'Accept & Join Team'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* RLS Alert Banner */}
       {rlsAlert && (

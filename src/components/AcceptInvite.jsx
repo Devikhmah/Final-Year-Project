@@ -99,13 +99,64 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
     }
   };
 
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isExistingUserMode, setIsExistingUserMode] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) {
+        setCurrentUser(data.session.user);
+      }
+    });
+  }, []);
+
+  const handleAcceptAsLoggedIn = async () => {
+    setSubmitting(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      // 1. Update user profile to set manager_id
+      const { error: userErr } = await supabase
+        .from('users')
+        .update({ manager_id: invitation.manager_id })
+        .eq('id', currentUser.id);
+
+      if (userErr) throw userErr;
+
+      // 2. Mark invitation confirmed in db if exists
+      if (invitation.id && invitation.id !== 'direct') {
+        try {
+          await supabase
+            .from('invitations')
+            .update({
+              status: 'confirmed',
+              responded_at: new Date().toISOString(),
+            })
+            .eq('id', invitation.id);
+        } catch (e) {
+          console.warn('Could not update invitation record in db:', e);
+        }
+      }
+
+      setSuccessMsg(`You have joined ${invitation.managerName}'s team! Redirecting to dashboard...`);
+      setTimeout(() => {
+        window.location.href = window.location.pathname;
+      }, 1500);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to join team.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAccept = async (e) => {
     e.preventDefault();
     if (!password || password.length < 6) {
       setErrorMsg('Password must be at least 6 characters long.');
       return;
     }
-    if (password !== confirmPassword) {
+    if (!isExistingUserMode && password !== confirmPassword) {
       setErrorMsg('Passwords do not match.');
       return;
     }
@@ -115,45 +166,64 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
     setSuccessMsg('');
 
     try {
-      // 1. Sign up user via Supabase Auth with manager_id metadata
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email: invitation.email,
-        password,
-        options: {
-          data: {
-            full_name: invitation.name,
-            role: 'employee',
-            manager_id: invitation.manager_id,
+      let authedUserId = null;
+
+      if (isExistingUserMode) {
+        // Mode 1: User specified they already have an account -> sign in directly
+        const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+          email: invitation.email,
+          password,
+        });
+        if (signInErr) throw signInErr;
+        authedUserId = signInData?.user?.id;
+      } else {
+        // Mode 2: Attempt standard signUp
+        const { data: authData, error: authErr } = await supabase.auth.signUp({
+          email: invitation.email,
+          password,
+          options: {
+            data: {
+              full_name: invitation.name,
+              role: 'employee',
+              manager_id: invitation.manager_id,
+            },
           },
-        },
-      });
+        });
 
-      if (authErr) throw authErr;
+        // If user already exists in auth, seamlessly switch to sign-in verification!
+        if (
+          authErr &&
+          (authErr.message?.toLowerCase().includes('already registered') ||
+           authErr.message?.toLowerCase().includes('already exists') ||
+           authErr.status === 422)
+        ) {
+          console.info('User already registered, attempting sign-in to link team...');
+          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+            email: invitation.email,
+            password,
+          });
 
-      // 2. Mark invitation as confirmed (if stored in database)
-      if (invitation.id && invitation.id !== 'direct') {
-        try {
-          const { error: updateInvErr } = await supabase
-            .from('invitations')
-            .update({
-              status: 'confirmed',
-              responded_at: new Date().toISOString(),
-            })
-            .eq('id', invitation.id);
-
-          if (updateInvErr) console.warn('Could not update invitation status:', updateInvErr);
-        } catch (updateErr) {
-          console.warn('Invitations table not available:', updateErr);
+          if (signInErr) {
+            setIsExistingUserMode(true);
+            throw new Error(
+              'An account with this email already exists! Please enter your existing account password to join this team.'
+            );
+          }
+          authedUserId = signInData?.user?.id;
+        } else if (authErr) {
+          throw authErr;
+        } else {
+          authedUserId = authData?.user?.id;
         }
       }
 
-      // 3. Ensure user profile in public.users has manager_id set
-      if (authData?.user?.id) {
+      // Link to manager's team in public.users
+      if (authedUserId) {
         try {
           await supabase
             .from('users')
             .upsert({
-              id: authData.user.id,
+              id: authedUserId,
               full_name: invitation.name,
               email: invitation.email,
               role: 'employee',
@@ -164,7 +234,22 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
         }
       }
 
-      setSuccessMsg('Account created & invitation accepted! Logging you in...');
+      // Mark invitation as confirmed in db if exists
+      if (invitation.id && invitation.id !== 'direct') {
+        try {
+          await supabase
+            .from('invitations')
+            .update({
+              status: 'confirmed',
+              responded_at: new Date().toISOString(),
+            })
+            .eq('id', invitation.id);
+        } catch (updateErr) {
+          console.warn('Invitations table update warning:', updateErr);
+        }
+      }
+
+      setSuccessMsg(`Welcome to the team! Connected to manager ${invitation.managerName}. Redirecting...`);
       setTimeout(() => {
         window.location.href = window.location.pathname;
       }, 1500);
@@ -300,69 +385,128 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
               </div>
             )}
 
-            {/* Account Setup Form */}
-            <form onSubmit={handleAccept} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  disabled
-                  value={invitation?.name || ''}
-                  className="w-full px-3.5 py-2.5 bg-[#121212] border border-[#1F1F1F] rounded-lg text-slate-400 text-xs cursor-not-allowed"
-                />
-              </div>
+            {/* If user is already logged in, show 1-click team join */}
+            {currentUser ? (
+              <div className="space-y-4 pt-2">
+                <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Existing Account Detected</span>
+                  <p className="text-xs text-slate-200 leading-relaxed font-medium">
+                    You are logged in as <strong className="text-white">{currentUser.user_metadata?.full_name || currentUser.email}</strong>.
+                  </p>
+                  <p className="text-xs text-slate-300">
+                    Click below to join <strong className="text-white">{invitation?.managerName || 'Your Manager'}</strong>'s team. Your account will be connected immediately.
+                  </p>
+                </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Create Password *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters..."
-                  className="w-full px-3.5 py-2.5 bg-[#000000] border border-[#1F1F1F] rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#D9A441] focus:ring-1 focus:ring-[#D9A441] text-xs"
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleDecline}
+                    disabled={submitting}
+                    className="py-3 px-4 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Confirm Password *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password..."
-                  className="w-full px-3.5 py-2.5 bg-[#000000] border border-[#1F1F1F] rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#D9A441] focus:ring-1 focus:ring-[#D9A441] text-xs"
-                />
+                  <button
+                    type="button"
+                    onClick={handleAcceptAsLoggedIn}
+                    disabled={submitting}
+                    className="py-3 px-4 bg-[#D9A441] hover:bg-[#C59336] text-[#000000] font-bold rounded-lg text-xs transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <span>{submitting ? 'Joining Team...' : 'Accept & Join Team'}</span>
+                  </button>
+                </div>
               </div>
+            ) : (
+              /* Account Setup / Sign-In Form */
+              <form onSubmit={handleAccept} className="space-y-4">
+                <div className="flex items-center justify-between pb-1 border-b border-white/5">
+                  <span className="text-[11px] text-slate-400">
+                    {isExistingUserMode ? 'Existing User Sign In' : 'New Employee Account'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExistingUserMode(!isExistingUserMode);
+                      setErrorMsg('');
+                    }}
+                    className="text-[11px] text-[#D9A441] hover:underline font-semibold"
+                  >
+                    {isExistingUserMode ? 'Need a new account? Register' : 'Already have an account? Sign In'}
+                  </button>
+                </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleDecline}
-                  disabled={submitting}
-                  className="py-3 px-4 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
-                >
-                  Decline
-                </button>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={invitation?.name || ''}
+                    className="w-full px-3.5 py-2.5 bg-[#121212] border border-[#1F1F1F] rounded-lg text-slate-400 text-xs cursor-not-allowed"
+                  />
+                </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="py-3 px-4 bg-[#D9A441] hover:bg-[#C59336] text-[#000000] font-bold rounded-lg text-xs transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
-                >
-                  <span>{submitting ? 'Accepting...' : 'Accept & Join Team'}</span>
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    {isExistingUserMode ? 'Your Account Password *' : 'Create Password *'}
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={isExistingUserMode ? 'Enter your account password...' : 'At least 6 characters...'}
+                    className="w-full px-3.5 py-2.5 bg-[#000000] border border-[#1F1F1F] rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#D9A441] focus:ring-1 focus:ring-[#D9A441] text-xs"
+                  />
+                </div>
+
+                {!isExistingUserMode && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                      Confirm Password *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter password..."
+                      className="w-full px-3.5 py-2.5 bg-[#000000] border border-[#1F1F1F] rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-[#D9A441] focus:ring-1 focus:ring-[#D9A441] text-xs"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleDecline}
+                    disabled={submitting}
+                    className="py-3 px-4 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="py-3 px-4 bg-[#D9A441] hover:bg-[#C59336] text-[#000000] font-bold rounded-lg text-xs transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    <span>
+                      {submitting
+                        ? 'Connecting...'
+                        : isExistingUserMode
+                        ? 'Sign In & Join Team'
+                        : 'Create Account & Join'}
+                    </span>
+                  </button>
+                </div>
+              </form>
+            )}
 
             <div className="pt-2 text-center border-t border-[#1F1F1F]">
               <button
@@ -370,7 +514,7 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
                 onClick={onReturnToLogin}
                 className="text-[11px] font-medium text-slate-400 hover:text-white transition-colors"
               >
-                Already have an account? <span className="underline font-bold">Sign In</span>
+                Return to <span className="underline font-bold">Sign In</span>
               </button>
             </div>
           </>

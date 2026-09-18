@@ -762,14 +762,19 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className={`w-full max-w-md ${t.modalBg} border ${t.border} rounded-2xl p-6 shadow-2xl space-y-4`}>
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className={`text-base font-bold ${t.heading} flex items-center gap-2`}>
-                <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-                <span>Invite Employee to Team</span>
-              </h3>
-              <button onClick={() => setIsInviteModalOpen(false)} className={`${t.muted} hover:${t.heading}`}>
+            <div className="flex items-start justify-between border-b border-white/10 pb-3">
+              <div>
+                <h3 className={`text-base font-bold ${t.heading} flex items-center gap-2`}>
+                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  <span>Invite Employee to Team</span>
+                </h3>
+                <p className={`text-[11px] ${t.muted} mt-0.5`}>
+                  Works for new employees and existing accounts (links them to your team).
+                </p>
+              </div>
+              <button onClick={() => setIsInviteModalOpen(false)} className={`${t.muted} hover:${t.heading} pt-0.5`}>
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
