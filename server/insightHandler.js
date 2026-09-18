@@ -22,16 +22,26 @@ function getApiKey() {
 }
 
 export async function handleGenerateInsight(reqData) {
-  const apiKey = getApiKey();
+  const { timeWindow = 'This Week', metrics = {}, employeeSummaries = [] } = reqData;
 
+  // TC-09: If no task data or hours exist for the period, return a clear structured message
+  const totalTasks = metrics.assignedCount || 0;
+  const totalHours = metrics.totalHoursLogged || 0;
+  if (totalTasks === 0 && totalHours === 0 && (!employeeSummaries || employeeSummaries.length === 0)) {
+    return {
+      success: true,
+      insightText: `No task activity or logged hours recorded for ${timeWindow.toLowerCase()}. To generate an AI executive summary, ensure team members have tasks assigned and work hours logged for this period.`,
+      isZeroDataState: true,
+    };
+  }
+
+  const apiKey = getApiKey();
   if (!apiKey) {
     return {
       success: false,
       error: 'GEMINI_API_KEY is not set in environment variables. Please add GEMINI_API_KEY=your_key to your .env.local file.',
     };
   }
-
-  const { timeWindow = 'This Week', metrics = {}, employeeSummaries = [] } = reqData;
 
   const promptText = `You are an executive workforce productivity analyst for Small and Medium Enterprises (SMEs).
 Analyze the following anonymized workforce metrics for ${timeWindow}:

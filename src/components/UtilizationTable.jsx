@@ -29,6 +29,56 @@ export default function UtilizationTable({ employees = [], tasks = [], timeLogs 
     return { text: 'Balanced Workload', badge: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' };
   };
 
+  // TC-10: Roster Status - Submitted takes priority (yellow) over in-progress/idle, not red
+  const getRosterStatus = (empTasks) => {
+    if (!empTasks || empTasks.length === 0) {
+      return {
+        status: 'idle',
+        badge: 'bg-slate-500/10 text-slate-700 dark:text-slate-400 border border-slate-500/30',
+        text: 'Idle / No Tasks',
+        dot: 'bg-slate-400',
+      };
+    }
+
+    const hasSubmitted = empTasks.some((t) => t.status === 'submitted');
+    const hasInProgress = empTasks.some((t) => t.status === 'in_progress');
+
+    if (hasSubmitted) {
+      return {
+        status: 'submitted',
+        badge: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30',
+        text: 'Awaiting Review',
+        dot: 'bg-amber-400',
+      };
+    }
+
+    if (hasInProgress) {
+      return {
+        status: 'in_progress',
+        badge: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/30',
+        text: 'In Progress',
+        dot: 'bg-blue-400',
+      };
+    }
+
+    const allDone = empTasks.every((t) => t.status === 'done');
+    if (allDone) {
+      return {
+        status: 'done',
+        badge: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30',
+        text: 'All Done',
+        dot: 'bg-emerald-400',
+      };
+    }
+
+    return {
+      status: 'pending',
+      badge: 'bg-slate-500/10 text-slate-700 dark:text-slate-400 border border-slate-500/30',
+      text: 'Pending',
+      dot: 'bg-slate-400',
+    };
+  };
+
   return (
     <div className={`${t.cardBg} p-6 rounded-2xl space-y-4 shadow-sm`}>
       <div>
@@ -46,6 +96,7 @@ export default function UtilizationTable({ employees = [], tasks = [], timeLogs 
             <tr className={`border-b ${t.border} ${t.muted} text-[10px] font-bold uppercase tracking-wider`}>
               <th className="py-3 px-4">Employee</th>
               <th className="py-3 px-4">Role</th>
+              <th className="py-3 px-4">Roster Status</th>
               <th className="py-3 px-4">Active Tasks</th>
               <th className="py-3 px-4">Approved Tasks</th>
               <th className="py-3 px-4">Logged Hours</th>
@@ -63,6 +114,7 @@ export default function UtilizationTable({ employees = [], tasks = [], timeLogs 
               const loggedHours = parseFloat((totalMins / 60).toFixed(1));
 
               const capStatus = getCapacityStatus(loggedHours);
+              const rosterStatus = getRosterStatus(empTasks);
 
               return (
                 <tr key={emp.id} className={`${t.cardHover} transition-colors`}>
@@ -72,6 +124,12 @@ export default function UtilizationTable({ employees = [], tasks = [], timeLogs 
                   <td className="py-3.5 px-4 capitalize">
                     <span className={`px-2 py-0.5 text-[10px] font-semibold rounded ${t.accentBg} ${t.muted}`}>
                       {emp.role || 'employee'}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${rosterStatus.badge}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${rosterStatus.dot}`} />
+                      {rosterStatus.text}
                     </span>
                   </td>
                   <td className="py-3.5 px-4 font-semibold text-blue-600 dark:text-blue-400">{activeCount}</td>

@@ -127,7 +127,7 @@ CREATE POLICY "Anyone can update invitation status by id"
   ON public.invitations FOR UPDATE
   USING (true);
 
--- 10. RLS Policies for public.tasks (Manager Team Scoped)
+-- 10. RLS Policies for public.tasks (Manager Team Scoped - TC-03)
 DROP POLICY IF EXISTS "Tasks SELECT policy" ON public.tasks;
 CREATE POLICY "Tasks SELECT policy"
   ON public.tasks FOR SELECT
@@ -300,3 +300,5 @@ CREATE TRIGGER enforce_permanent_role
   BEFORE UPDATE ON public.users
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_role_update();
+
+

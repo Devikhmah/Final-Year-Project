@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint src server",
+    "test": "node --test tests/specifiedTestCases.test.js tests/onlineE2ETest.js tests/managerAuthHandler.test.js tests/insightHandler.test.js tests/velocityMetricsLogic.test.js tests/supabaseSchemaValidation.test.js tests/componentHelpers.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

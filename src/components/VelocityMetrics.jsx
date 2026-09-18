@@ -31,8 +31,8 @@ export default function VelocityMetrics({ tasks = [], timeWindow = 'week' }) {
       onTimeCount++;
     } else {
       const deadlineDate = new Date(task.deadline);
-      // Task is on time if current/completion date is on or before deadline
-      if (now <= deadlineDate) {
+      const completionDate = task.updated_at ? new Date(task.updated_at) : new Date(task.created_at || now);
+      if (completionDate <= deadlineDate) {
         onTimeCount++;
       } else {
         overdueCount++;
