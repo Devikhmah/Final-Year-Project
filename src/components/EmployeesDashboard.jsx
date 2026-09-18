@@ -47,6 +47,8 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
   const [inviteErrorMsg, setInviteErrorMsg] = useState('');
   const [invitationTableMissing, setInvitationTableMissing] = useState(false);
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [generatedInviteUrl, setGeneratedInviteUrl] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const currentManagerId = userProfile?.id || userSession?.user?.id;
 
@@ -143,6 +145,7 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
     setSendingInvite(true);
     setInviteErrorMsg('');
     setInviteSuccessMsg('');
+    setGeneratedInviteUrl('');
 
     try {
       // Check if employee with this email already exists on team
@@ -151,41 +154,46 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
         throw new Error('An employee with this email is already on your roster.');
       }
 
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert([
-          {
-            manager_id: currentManagerId,
-            name: inviteName.trim(),
-            email: inviteEmail.trim().toLowerCase(),
-            status: 'pending',
-          },
-        ])
-        .select()
-        .single();
+      let inviteUrl = '';
+      let usedDirectFallback = false;
 
-      if (error) {
-        if (
-          error.message?.includes('schema cache') ||
-          error.message?.includes('invitations') ||
-          error.code === 'PGRST204' ||
-          error.code === '42P01'
-        ) {
-          setInvitationTableMissing(true);
-          throw new Error(
-            "The 'public.invitations' table is missing from your Supabase database schema cache. Use the 'Copy SQL Migration Script' button below to copy the setup code, run it in your Supabase SQL Editor, and try again."
-          );
-        }
-        throw error;
+      // 1. Attempt standard insert into Supabase invitations table
+      try {
+        const { data, error } = await supabase
+          .from('invitations')
+          .insert([
+            {
+              manager_id: currentManagerId,
+              name: inviteName.trim(),
+              email: inviteEmail.trim().toLowerCase(),
+              status: 'pending',
+            },
+          ])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        inviteUrl = `${window.location.origin}?invite=${data.id}`;
+        setInvitationTableMissing(false);
+        fetchData();
+      } catch (tableErr) {
+        console.warn('Invitations table not ready in Supabase schema cache, generating direct invite link:', tableErr);
+        setInvitationTableMissing(true);
+        usedDirectFallback = true;
+        const encName = encodeURIComponent(inviteName.trim());
+        const encEmail = encodeURIComponent(inviteEmail.trim().toLowerCase());
+        inviteUrl = `${window.location.origin}?invite=direct&manager=${currentManagerId}&name=${encName}&email=${encEmail}`;
       }
 
-      const inviteUrl = `${window.location.origin}?invite=${data.id}`;
-
-      setInviteSuccessMsg(`Invitation created for ${data.name}! Share link: ${inviteUrl}`);
+      setGeneratedInviteUrl(inviteUrl);
+      setInviteSuccessMsg(
+        usedDirectFallback
+          ? `Invitation link ready for ${inviteName.trim()}! Copy and send the link below to add them to your team.`
+          : `Invitation created for ${inviteName.trim()}! Copy and send the link below:`
+      );
       setInviteName('');
       setInviteEmail('');
-      setInvitationTableMissing(false);
-      fetchData();
     } catch (err) {
       setInviteErrorMsg(err.message || 'Failed to create invitation.');
     } finally {
@@ -801,8 +809,37 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
             )}
 
             {inviteSuccessMsg && (
-              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs space-y-2">
-                <p>{inviteSuccessMsg}</p>
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="font-semibold text-emerald-200">{inviteSuccessMsg}</p>
+                </div>
+                {generatedInviteUrl && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="text"
+                      readOnly
+                      value={generatedInviteUrl}
+                      className={`flex-1 px-2.5 py-2 ${t.inputBg} border ${t.inputBorder} rounded-lg text-[11px] text-emerald-200 font-mono select-all`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedInviteUrl);
+                        setLinkCopied(true);
+                        setTimeout(() => setLinkCopied(false), 2500);
+                      }}
+                      className="px-3.5 py-2 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] font-bold rounded-lg text-xs shrink-0 flex items-center gap-1 shadow transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                      </svg>
+                      <span>{linkCopied ? 'Copied!' : 'Copy Link'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

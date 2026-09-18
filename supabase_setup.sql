@@ -77,6 +77,11 @@ ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.time_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_attachments ENABLE ROW LEVEL SECURITY;
 
+-- Grant permissions to PostgREST API roles (Required for PostgREST Schema Cache recognition)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+
 -- 7. Helper Function: is_manager()
 CREATE OR REPLACE FUNCTION public.is_manager()
 RETURNS BOOLEAN AS $$

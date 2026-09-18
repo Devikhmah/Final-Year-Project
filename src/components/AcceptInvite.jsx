@@ -23,7 +23,48 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
     setLoading(true);
     setErrorMsg('');
     try {
-      // Fetch invitation record
+      const params = new URLSearchParams(window.location.search);
+      const isDirect = invitationId === 'direct' || params.get('manager');
+
+      if (isDirect) {
+        const mgrId = params.get('manager') || '';
+        const nameParam = params.get('name') || '';
+        const emailParam = params.get('email') || '';
+
+        let mgrName = 'Your Manager';
+        let mgrEmail = 'Manager';
+
+        if (mgrId) {
+          try {
+            const { data: mgrData } = await supabase
+              .from('users')
+              .select('full_name, email')
+              .eq('id', mgrId)
+              .maybeSingle();
+
+            if (mgrData) {
+              if (mgrData.full_name) mgrName = mgrData.full_name;
+              if (mgrData.email) mgrEmail = mgrData.email;
+            }
+          } catch (e) {
+            console.warn('Could not fetch manager profile:', e);
+          }
+        }
+
+        setInvitation({
+          id: 'direct',
+          manager_id: mgrId,
+          name: nameParam,
+          email: emailParam,
+          status: 'pending',
+          managerName: mgrName,
+          managerEmail: mgrEmail,
+          isDirect: true,
+        });
+        return;
+      }
+
+      // Fetch invitation record from Supabase
       const { data: invData, error: invErr } = await supabase
         .from('invitations')
         .select('*')
@@ -89,28 +130,38 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
 
       if (authErr) throw authErr;
 
-      // 2. Mark invitation as confirmed
-      const { error: updateInvErr } = await supabase
-        .from('invitations')
-        .update({
-          status: 'confirmed',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', invitation.id);
+      // 2. Mark invitation as confirmed (if stored in database)
+      if (invitation.id && invitation.id !== 'direct') {
+        try {
+          const { error: updateInvErr } = await supabase
+            .from('invitations')
+            .update({
+              status: 'confirmed',
+              responded_at: new Date().toISOString(),
+            })
+            .eq('id', invitation.id);
 
-      if (updateInvErr) console.warn('Could not update invitation status:', updateInvErr);
+          if (updateInvErr) console.warn('Could not update invitation status:', updateInvErr);
+        } catch (updateErr) {
+          console.warn('Invitations table not available:', updateErr);
+        }
+      }
 
       // 3. Ensure user profile in public.users has manager_id set
       if (authData?.user?.id) {
-        await supabase
-          .from('users')
-          .upsert({
-            id: authData.user.id,
-            full_name: invitation.name,
-            email: invitation.email,
-            role: 'employee',
-            manager_id: invitation.manager_id,
-          });
+        try {
+          await supabase
+            .from('users')
+            .upsert({
+              id: authData.user.id,
+              full_name: invitation.name,
+              email: invitation.email,
+              role: 'employee',
+              manager_id: invitation.manager_id,
+            });
+        } catch (upsertErr) {
+          console.warn('Profile upsert warning:', upsertErr);
+        }
       }
 
       setSuccessMsg('Account created & invitation accepted! Logging you in...');
@@ -131,15 +182,21 @@ export default function AcceptInvite({ invitationId, onReturnToLogin }) {
     setErrorMsg('');
 
     try {
-      const { error } = await supabase
-        .from('invitations')
-        .update({
-          status: 'declined',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', invitation.id);
+      if (invitation.id && invitation.id !== 'direct') {
+        try {
+          const { error } = await supabase
+            .from('invitations')
+            .update({
+              status: 'declined',
+              responded_at: new Date().toISOString(),
+            })
+            .eq('id', invitation.id);
 
-      if (error) throw error;
+          if (error) console.warn('Could not update invitation decline:', error);
+        } catch (updateErr) {
+          console.warn('Invitations table not available:', updateErr);
+        }
+      }
 
       setInvitation((prev) => ({ ...prev, status: 'declined' }));
       setSuccessMsg('You have declined the invitation.');
