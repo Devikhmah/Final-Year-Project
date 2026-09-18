@@ -452,6 +452,8 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
               )}
             </div>
 
+            <p className={`text-[11px] ${t.muted} mt-1.5`}>Supported: PNG, JPG, WEBP, GIF (Maximum upload size: 5MB)</p>
+
             {avatarMsg && <p className="text-xs font-semibold text-emerald-400 mt-2">{avatarMsg}</p>}
             {avatarErr && <p className="text-xs font-semibold text-rose-400 mt-2">{avatarErr}</p>}
           </div>
@@ -462,32 +464,47 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
       <div className={`${t.cardBg} p-6 rounded-2xl space-y-4 shadow-sm border ${t.border}`}>
         <div>
           <h3 className={`text-base font-bold ${t.heading}`}>Appearance & Application Theme</h3>
-          <p className={`text-xs ${t.muted} mt-1`}>Select your preferred visual style. Settings save automatically across your devices.</p>
+          <p className={`text-xs ${t.muted} mt-1`}>Default is set to system theme. You can also lock Light or Dark mode. Settings save automatically.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
           <button
             type="button"
-            onClick={() => setTheme('dark')}
-            className={`p-4 rounded-xl border flex items-center justify-center transition-all cursor-pointer text-sm font-bold ${
-              theme === 'dark'
+            onClick={() => setTheme('system')}
+            className={`p-3.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-xs font-bold ${
+              themeMode === 'system'
                 ? 'border-[#D9A441] bg-[#D9A441]/10 ring-2 ring-[#D9A441]/40 text-[#D9A441]'
-                : `${t.border} bg-black/20 hover:border-slate-400 ${t.heading}`
+                : `${t.border} bg-black/5 dark:bg-black/20 hover:border-slate-400 ${t.heading}`
             }`}
           >
-            Dark Mode
+            <span>🖥️ System Default</span>
+            <span className={`text-[10px] font-normal ${t.muted}`}>Auto-follows device</span>
           </button>
 
           <button
             type="button"
             onClick={() => setTheme('light')}
-            className={`p-4 rounded-xl border flex items-center justify-center transition-all cursor-pointer text-sm font-bold ${
-              theme === 'light'
+            className={`p-3.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-xs font-bold ${
+              themeMode === 'light'
                 ? 'border-[#D9A441] bg-[#D9A441]/10 ring-2 ring-[#D9A441]/40 text-[#D9A441]'
-                : `${t.border} bg-black/20 hover:border-slate-400 ${t.heading}`
+                : `${t.border} bg-black/5 dark:bg-black/20 hover:border-slate-400 ${t.heading}`
             }`}
           >
-            Light Mode
+            <span>☀️ Light Mode</span>
+            <span className={`text-[10px] font-normal ${t.muted}`}>Cadence Slate</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme('dark')}
+            className={`p-3.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer text-xs font-bold ${
+              themeMode === 'dark'
+                ? 'border-[#D9A441] bg-[#D9A441]/10 ring-2 ring-[#D9A441]/40 text-[#D9A441]'
+                : `${t.border} bg-black/5 dark:bg-black/20 hover:border-slate-400 ${t.heading}`
+            }`}
+          >
+            <span>🌙 Dark Mode</span>
+            <span className={`text-[10px] font-normal ${t.muted}`}>Cadence Deep Dark</span>
           </button>
         </div>
       </div>

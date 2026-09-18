@@ -78,10 +78,60 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
             }
             setPendingTeamInvite({ ...firstInv, managerName: mgrName });
           } else {
-            setPendingTeamInvite(null);
+            // If no DB invite found, check URL parameters or localStorage for direct invite
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlInvite = urlParams.get('invite') || urlParams.get('invitation_id');
+            const urlMgr = urlParams.get('manager');
+            const storedInvite = JSON.parse(localStorage.getItem('cadence_pending_invite') || 'null');
+
+            const activeMgrId = urlMgr || (urlInvite === 'direct' ? urlMgr : null) || storedInvite?.manager_id;
+
+            if (activeMgrId && (!userProfile?.manager_id || userProfile?.manager_id !== activeMgrId)) {
+              let mgrName = storedInvite?.managerName || 'Your Manager';
+              try {
+                const { data: mgr } = await supabase
+                  .from('users')
+                  .select('full_name, email')
+                  .eq('id', activeMgrId)
+                  .maybeSingle();
+                if (mgr?.full_name) mgrName = mgr.full_name;
+              } catch (e) {}
+
+              setPendingTeamInvite({
+                id: urlInvite || storedInvite?.id || 'direct',
+                manager_id: activeMgrId,
+                managerName: mgrName,
+                isDirect: true,
+              });
+            } else {
+              setPendingTeamInvite(null);
+            }
           }
         } catch (e) {
-          // Invitations table may not exist in schema cache yet, safe to ignore
+          // Check URL parameters or localStorage even if invitations query failed
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlMgr = urlParams.get('manager');
+          const storedInvite = JSON.parse(localStorage.getItem('cadence_pending_invite') || 'null');
+          const activeMgrId = urlMgr || storedInvite?.manager_id;
+
+          if (activeMgrId && (!userProfile?.manager_id || userProfile?.manager_id !== activeMgrId)) {
+            let mgrName = storedInvite?.managerName || 'Your Manager';
+            try {
+              const { data: mgr } = await supabase
+                .from('users')
+                .select('full_name, email')
+                .eq('id', activeMgrId)
+                .maybeSingle();
+              if (mgr?.full_name) mgrName = mgr.full_name;
+            } catch (err2) {}
+
+            setPendingTeamInvite({
+              id: 'direct',
+              manager_id: activeMgrId,
+              managerName: mgrName,
+              isDirect: true,
+            });
+          }
         }
       }
     } catch (err) {
@@ -101,24 +151,29 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
 
       if (userErr) throw userErr;
 
-      try {
-        await supabase
-          .from('invitations')
-          .update({
-            status: 'confirmed',
-            responded_at: new Date().toISOString(),
-          })
-          .eq('id', inv.id);
-      } catch (e) {
-        console.warn('Invitations status update warning:', e);
+      if (inv.id && inv.id !== 'direct') {
+        try {
+          await supabase
+            .from('invitations')
+            .update({
+              status: 'confirmed',
+              responded_at: new Date().toISOString(),
+            })
+            .eq('id', inv.id);
+        } catch (e) {
+          console.warn('Invitations status update warning:', e);
+        }
       }
+
+      localStorage.removeItem('cadence_pending_invite');
+      window.history.replaceState({}, document.title, window.location.pathname);
 
       setMsg(`✓ Successfully joined ${inv.managerName}'s team!`);
       setPendingTeamInvite(null);
       fetchData();
       setTimeout(() => {
         window.location.reload();
-      }, 1000);
+      }, 800);
     } catch (err) {
       alert('Failed to accept invitation: ' + err.message);
     } finally {
@@ -130,14 +185,19 @@ export default function EmployeeDashboard({ userProfile, userSession }) {
     if (!window.confirm('Are you sure you want to decline this team invitation?')) return;
     setInviteActionLoading(true);
     try {
-      await supabase
-        .from('invitations')
-        .update({
-          status: 'declined',
-          responded_at: new Date().toISOString(),
-        })
-        .eq('id', invId);
+      if (invId && invId !== 'direct') {
+        await supabase
+          .from('invitations')
+          .update({
+            status: 'declined',
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', invId);
+      }
+      localStorage.removeItem('cadence_pending_invite');
+      window.history.replaceState({}, document.title, window.location.pathname);
       setPendingTeamInvite(null);
+      setMsg('Team invitation declined.');
     } catch (e) {
       console.warn('Decline error:', e);
       setPendingTeamInvite(null);

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import AcceptInvite from './AcceptInvite';
-import { Shield, Clock, BarChart2, ShieldCheck, ChevronDown, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Shield, Clock, BarChart2, ShieldCheck, ChevronDown, AlertCircle, CheckCircle2, UserCheck } from 'lucide-react';
 
 export default function Auth() {
   // 'signin' | 'signup'
@@ -15,27 +14,70 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [invitationId, setInvitationId] = useState(null);
+  const [inviteInfo, setInviteInfo] = useState(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inviteParam = params.get('invite') || params.get('invitation_id');
-    if (inviteParam) {
-      setInvitationId(inviteParam);
-    }
-  }, []);
+    if (!inviteParam) return;
 
-  if (invitationId) {
-    return (
-      <AcceptInvite
-        invitationId={invitationId}
-        onReturnToLogin={() => {
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setInvitationId(null);
-        }}
-      />
-    );
-  }
+    const parseInvite = async () => {
+      const isDirect = inviteParam === 'direct' || params.get('manager');
+      if (isDirect) {
+        const mgrId = params.get('manager') || '';
+        const nameParam = params.get('name') || '';
+        const emailParam = params.get('email') || '';
+
+        let mgrName = 'Your Manager';
+        if (mgrId) {
+          try {
+            const { data: mgr } = await supabase.from('users').select('full_name').eq('id', mgrId).maybeSingle();
+            if (mgr?.full_name) mgrName = mgr.full_name;
+          } catch (e) {
+            console.warn('Manager lookup warning:', e);
+          }
+        }
+
+        const info = {
+          id: 'direct',
+          manager_id: mgrId,
+          name: nameParam,
+          email: emailParam,
+          managerName: mgrName,
+          isDirect: true,
+        };
+        setInviteInfo(info);
+        if (emailParam) setEmail(emailParam);
+        if (nameParam) setFullName(nameParam);
+        setRole('Employee');
+        localStorage.setItem('cadence_pending_invite', JSON.stringify(info));
+      } else {
+        try {
+          const { data: invData } = await supabase.from('invitations').select('*').eq('id', inviteParam).maybeSingle();
+          if (invData) {
+            let mgrName = 'Your Manager';
+            if (invData.manager_id) {
+              const { data: mgr } = await supabase.from('users').select('full_name').eq('id', invData.manager_id).maybeSingle();
+              if (mgr?.full_name) mgrName = mgr.full_name;
+            }
+            const info = {
+              ...invData,
+              managerName: mgrName,
+            };
+            setInviteInfo(info);
+            if (invData.email) setEmail(invData.email);
+            if (invData.name) setFullName(invData.name);
+            setRole('Employee');
+            localStorage.setItem('cadence_pending_invite', JSON.stringify(info));
+          }
+        } catch (e) {
+          console.warn('Could not load invitation details:', e);
+        }
+      }
+    };
+
+    parseInvite();
+  }, []);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -43,13 +85,15 @@ export default function Auth() {
     setErrorMsg('');
     setSuccessMsg('');
 
+    const activeInvite = inviteInfo || JSON.parse(localStorage.getItem('cadence_pending_invite') || 'null');
+
     try {
       if (tab === 'signup') {
         if (!fullName.trim()) {
           throw new Error('Please enter your full name');
         }
 
-        const normalizedRole = role.toLowerCase();
+        const normalizedRole = inviteInfo ? 'employee' : role.toLowerCase();
 
         // TC-01: Verify Manager code if registering as Manager
         if (normalizedRole === 'manager') {
@@ -81,18 +125,53 @@ export default function Auth() {
           },
         });
 
-        if (error) throw error;
+        if (error) {
+          if (error.message?.toLowerCase().includes('already registered')) {
+            setTab('signin');
+            setErrorMsg('An account with this email already exists. Please sign in with your password to join the team.');
+            setLoading(false);
+            return;
+          }
+          throw error;
+        }
 
         if (data?.user) {
-          setSuccessMsg(`${role} account created successfully! Logging you in...`);
+          // Link manager if this is an invitation
+          if (activeInvite?.manager_id) {
+            try {
+              await supabase.from('users').update({ manager_id: activeInvite.manager_id }).eq('id', data.user.id);
+              if (activeInvite.id && activeInvite.id !== 'direct') {
+                await supabase.from('invitations').update({ status: 'confirmed', responded_at: new Date().toISOString() }).eq('id', activeInvite.id);
+              }
+            } catch (linkErr) {
+              console.warn('Invite link warning on signup:', linkErr);
+            }
+          }
+          localStorage.removeItem('cadence_pending_invite');
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setSuccessMsg(`Account created successfully! Connecting you to your team...`);
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
+
+        // If an invitation is active, connect the existing user to the manager's team
+        if (data?.user && activeInvite?.manager_id) {
+          try {
+            await supabase.from('users').update({ manager_id: activeInvite.manager_id }).eq('id', data.user.id);
+            if (activeInvite.id && activeInvite.id !== 'direct') {
+              await supabase.from('invitations').update({ status: 'confirmed', responded_at: new Date().toISOString() }).eq('id', activeInvite.id);
+            }
+          } catch (linkErr) {
+            console.warn('Invite link warning on signin:', linkErr);
+          }
+          localStorage.removeItem('cadence_pending_invite');
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       }
     } catch (err) {
       setErrorMsg(err.message || 'An error occurred during authentication.');
@@ -165,10 +244,36 @@ export default function Auth() {
         {/* Right Auth Card Panel */}
         <div className="lg:col-span-5 w-full flex justify-center lg:justify-end">
           <div className="w-full max-w-[430px] bg-white border border-slate-200/90 rounded-2xl shadow-sm p-7 sm:p-8 space-y-5">
+            {/* Team Invitation Notification Banner */}
+            {inviteInfo && (
+              <div className="p-4 rounded-xl bg-teal-50 border border-teal-200/90 space-y-1.5 shadow-xs">
+                <div className="flex items-center gap-2 font-bold text-[#006874] text-xs">
+                  <UserCheck className="w-4 h-4 text-[#006874] shrink-0" />
+                  <span>Team Invitation from {inviteInfo.managerName}</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  {tab === 'signin'
+                    ? `Sign in with your existing account to connect with ${inviteInfo.managerName}'s workforce team.`
+                    : `Create your employee account to join ${inviteInfo.managerName}'s workforce team.`}
+                </p>
+                {inviteInfo.email && (
+                  <div className="pt-1 text-[10px] text-slate-500 font-medium">
+                    Invited: <strong className="text-slate-800">{inviteInfo.email}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Form Title & Subtitle */}
             <div className="space-y-1">
               <h2 className="text-base font-bold text-slate-900">
-                {tab === 'signin' ? 'Sign in to Cadence' : 'Create an account'}
+                {inviteInfo
+                  ? tab === 'signin'
+                    ? 'Sign in to join team'
+                    : 'Create account & join team'
+                  : tab === 'signin'
+                  ? 'Sign in to Cadence'
+                  : 'Create an account'}
               </h2>
               <p className="text-xs text-slate-500">
                 Use your work email to access your tasks and analytics.

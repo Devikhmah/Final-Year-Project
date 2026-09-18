@@ -81,6 +81,7 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
       const teamEmployeeIds = (usersData || []).map((u) => u.id);
 
       // 2. Query pending/all invitations created by this manager
+      let combinedInvites = [];
       try {
         const { data: invData, error: invErr } = await supabase
           .from('invitations')
@@ -88,29 +89,25 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
           .eq('manager_id', currentManagerId)
           .order('created_at', { ascending: false });
 
-        if (invErr) {
-          if (
-            invErr.message?.includes('schema cache') ||
-            invErr.message?.includes('invitations') ||
-            invErr.code === 'PGRST204' ||
-            invErr.code === '42P01'
-          ) {
-            console.warn('Invitations table not detected in schema cache:', invErr.message);
-            setInvitationTableMissing(true);
-            setInvitations([]);
-          } else {
-            console.error('Error fetching invitations:', invErr);
-            setInvitations([]);
-          }
-        } else {
-          setInvitationTableMissing(false);
-          setInvitations(invData || []);
+        if (!invErr && invData) {
+          combinedInvites = invData;
         }
       } catch (e) {
-        console.warn('Invitations query caught exception:', e);
-        setInvitationTableMissing(true);
-        setInvitations([]);
+        // Invitations table may not exist in schema cache, handled via direct invite storage
       }
+
+      // Merge local fallback invitations
+      try {
+        const localInvites = JSON.parse(localStorage.getItem(`cadence_direct_invites_${currentManagerId}`) || '[]');
+        const existingEmails = new Set([
+          ...combinedInvites.map((i) => i.email?.toLowerCase()),
+          ...(usersData || []).map((u) => u.email?.toLowerCase()),
+        ]);
+        const validLocal = localInvites.filter((li) => !existingEmails.has(li.email?.toLowerCase()));
+        combinedInvites = [...combinedInvites, ...validLocal];
+      } catch (e) {}
+
+      setInvitations(combinedInvites);
 
       // 3. Query tasks for workload computation (strictly scoped to this manager's team)
       const { data: tasksData, error: tasksErr } = await supabase
@@ -155,7 +152,6 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
       }
 
       let inviteUrl = '';
-      let usedDirectFallback = false;
 
       // 1. Attempt standard insert into Supabase invitations table
       try {
@@ -173,27 +169,37 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
           .single();
 
         if (error) throw error;
-
         inviteUrl = `${window.location.origin}?invite=${data.id}`;
-        setInvitationTableMissing(false);
-        fetchData();
       } catch (tableErr) {
-        console.warn('Invitations table not ready in Supabase schema cache, generating direct invite link:', tableErr);
-        setInvitationTableMissing(true);
-        usedDirectFallback = true;
+        // Transparent fallback to direct team link
         const encName = encodeURIComponent(inviteName.trim());
         const encEmail = encodeURIComponent(inviteEmail.trim().toLowerCase());
         inviteUrl = `${window.location.origin}?invite=direct&manager=${currentManagerId}&name=${encName}&email=${encEmail}`;
+
+        // Save to local direct invites cache
+        try {
+          const key = `cadence_direct_invites_${currentManagerId}`;
+          const currentLocal = JSON.parse(localStorage.getItem(key) || '[]');
+          currentLocal.unshift({
+            id: `direct_${Date.now()}`,
+            manager_id: currentManagerId,
+            name: inviteName.trim(),
+            email: inviteEmail.trim().toLowerCase(),
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            isDirect: true,
+          });
+          localStorage.setItem(key, JSON.stringify(currentLocal));
+        } catch (e) {}
       }
 
       setGeneratedInviteUrl(inviteUrl);
       setInviteSuccessMsg(
-        usedDirectFallback
-          ? `Invitation link ready for ${inviteName.trim()}! Copy and send the link below to add them to your team.`
-          : `Invitation created for ${inviteName.trim()}! Copy and send the link below:`
+        `✓ Invitation link ready for ${inviteName.trim()}! Copy and send the link below:`
       );
       setInviteName('');
       setInviteEmail('');
+      fetchData();
     } catch (err) {
       setInviteErrorMsg(err.message || 'Failed to create invitation.');
     } finally {
@@ -201,8 +207,19 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
     }
   };
 
-  const handleCopyInviteLink = (invId) => {
-    const link = `${window.location.origin}?invite=${invId}`;
+  const handleCopyInviteLink = (inv) => {
+    let link = '';
+    const invId = typeof inv === 'string' ? inv : inv.id;
+    const item = typeof inv === 'object' ? inv : invitations.find((i) => i.id === invId);
+
+    if (item?.isDirect || String(invId).startsWith('direct_')) {
+      const encName = encodeURIComponent(item?.name || '');
+      const encEmail = encodeURIComponent(item?.email || '');
+      link = `${window.location.origin}?invite=direct&manager=${currentManagerId}&name=${encName}&email=${encEmail}`;
+    } else {
+      link = `${window.location.origin}?invite=${invId}`;
+    }
+
     navigator.clipboard.writeText(link);
     setCopiedInviteId(invId);
     setTimeout(() => setCopiedInviteId(null), 2500);
@@ -211,8 +228,14 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
   const handleCancelInvitation = async (invId) => {
     if (!window.confirm('Are you sure you want to cancel this pending invitation?')) return;
     try {
-      const { error } = await supabase.from('invitations').delete().eq('id', invId);
-      if (error) throw error;
+      if (String(invId).startsWith('direct_')) {
+        const key = `cadence_direct_invites_${currentManagerId}`;
+        const currentLocal = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = currentLocal.filter((i) => i.id !== invId);
+        localStorage.setItem(key, JSON.stringify(updated));
+      } else {
+        await supabase.from('invitations').delete().eq('id', invId);
+      }
       fetchData();
     } catch (err) {
       alert('Failed to cancel invitation: ' + err.message);
@@ -369,34 +392,6 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
         </div>
       </div>
 
-      {/* Schema Cache Alert Banner */}
-      {invitationTableMissing && (
-        <div className="p-4 rounded-2xl bg-amber-500/15 dark:bg-amber-500/10 border border-amber-500/40 dark:border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-amber-900 dark:text-amber-200">Supabase Invitations Table Missing or Pending Schema Reload</p>
-              <p className="text-[11px] text-amber-800 dark:text-amber-300/80 mt-0.5">
-                PostgREST reported that <code className="bg-amber-200/60 dark:bg-amber-950/60 px-1 py-0.5 rounded text-amber-950 dark:text-amber-200 font-mono font-bold">public.invitations</code> is not in the schema cache. Click below to copy the SQL setup script to run in your Supabase SQL Editor.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleCopySqlSnippet}
-            className="px-3.5 py-2 bg-amber-600/20 hover:bg-amber-600/30 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 border border-amber-600/40 dark:border-amber-500/40 rounded-xl text-amber-950 dark:text-amber-200 text-xs font-bold shrink-0 flex items-center gap-1.5 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-            </svg>
-            <span>{sqlCopied ? 'Copied SQL to Clipboard!' : 'Copy SQL Migration Script'}</span>
-          </button>
-        </div>
-      )}
-
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {/* Card 1: Confirmed Team */}
@@ -482,7 +477,7 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
 
                 <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px]">
                   <button
-                    onClick={() => handleCopyInviteLink(inv.id)}
+                    onClick={() => handleCopyInviteLink(inv)}
                     className="text-[#D9A441] hover:underline font-semibold flex items-center gap-1.5"
                   >
                     {copiedInviteId === inv.id ? (
@@ -784,32 +779,6 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
             {inviteErrorMsg && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
                 {inviteErrorMsg}
-              </div>
-            )}
-
-            {invitationTableMissing && (
-              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs space-y-2">
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <div className="flex-1">
-                    <p className="font-bold text-amber-900 dark:text-amber-200">Supabase Table Missing in Schema Cache</p>
-                    <p className="text-[11px] text-amber-800 dark:text-amber-300/90 mt-0.5">
-                      The <code className="bg-amber-200/70 dark:bg-amber-950/60 px-1 py-0.5 rounded text-amber-950 dark:text-amber-200 font-mono font-bold">public.invitations</code> table needs to be created or reloaded in your Supabase database.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopySqlSnippet}
-                  className="w-full py-2 px-3 bg-amber-200/80 hover:bg-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 border border-amber-400/50 dark:border-amber-500/40 rounded-lg text-amber-950 dark:text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                >
-                  <svg className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                  </svg>
-                  <span>{sqlCopied ? 'Copied SQL to Clipboard!' : 'Copy SQL Migration Script'}</span>
-                </button>
               </div>
             )}
 
