@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
-export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSaved, defaultAssigneeId }) {
+export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSaved, defaultAssigneeId, currentManagerId }) {
   const { themeTokens: t } = useTheme();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -54,7 +54,10 @@ export default function TaskModal({ isOpen, onClose, taskToEdit, employees, onSa
         const { error } = await supabase.from('tasks').update(payload).eq('id', taskToEdit.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('tasks').insert([{ ...payload, status: 'pending' }]);
+        const creatorId = currentManagerId || (await supabase.auth.getUser()).data?.user?.id || null;
+        const { error } = await supabase.from('tasks').insert([
+          { ...payload, status: 'pending', created_by: creatorId }
+        ]);
         if (error) throw error;
       }
 

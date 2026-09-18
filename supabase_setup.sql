@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS public.invitations (
   responded_at TIMESTAMPTZ
 );
 
--- 3. Create public.tasks table (with 4-stage status & rejection_note)
+-- 3. Create public.tasks table (with 4-stage status, created_by & rejection_note)
 CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   category TEXT,
   priority TEXT CHECK (priority IN ('high', 'medium', 'low')) DEFAULT 'medium',
   assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
   status TEXT CHECK (status IN ('pending', 'in_progress', 'submitted', 'done')) DEFAULT 'pending',
   rejection_note TEXT,
   deadline TIMESTAMPTZ,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 );
 
 -- Ensure columns & constraints exist
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
 ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS rejection_note TEXT;
 ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
 ALTER TABLE public.tasks ADD CONSTRAINT tasks_status_check 
@@ -98,7 +100,7 @@ CREATE POLICY "Users can view profiles"
   ON public.users FOR SELECT
   USING (
     id = auth.uid() 
-    OR (public.is_manager() AND (manager_id = auth.uid() OR manager_id IS NULL))
+    OR (public.is_manager() AND role = 'employee' AND manager_id = auth.uid())
     OR (id = (SELECT manager_id FROM public.users WHERE id = auth.uid()))
   );
 
@@ -135,7 +137,7 @@ CREATE POLICY "Tasks SELECT policy"
     assigned_to = auth.uid() 
     OR (
       public.is_manager() AND (
-        assigned_to IS NULL 
+        created_by = auth.uid() 
         OR assigned_to IN (SELECT id FROM public.users WHERE manager_id = auth.uid() OR id = auth.uid())
       )
     )
@@ -151,7 +153,7 @@ CREATE POLICY "Manager UPDATE policy"
   ON public.tasks FOR UPDATE
   USING (
     public.is_manager() AND (
-      assigned_to IS NULL 
+      created_by = auth.uid() 
       OR assigned_to IN (SELECT id FROM public.users WHERE manager_id = auth.uid() OR id = auth.uid())
     )
   )
@@ -168,7 +170,7 @@ CREATE POLICY "Tasks DELETE policy"
   ON public.tasks FOR DELETE
   USING (
     public.is_manager() AND (
-      assigned_to IS NULL 
+      created_by = auth.uid() 
       OR assigned_to IN (SELECT id FROM public.users WHERE manager_id = auth.uid() OR id = auth.uid())
     )
   );
@@ -300,5 +302,9 @@ CREATE TRIGGER enforce_permanent_role
   BEFORE UPDATE ON public.users
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_role_update();
+
+-- 16. Reload schema cache for PostgREST
+NOTIFY pgrst, 'reload schema';
+
 
 

@@ -35,13 +35,23 @@ export default function AnalyticsDashboard({ userProfile, userSession }) {
         .eq('role', 'employee')
         .eq('manager_id', currentManagerId);
 
+      const teamEmployeeIds = (usersData || []).map((u) => u.id);
       setEmployees(usersData || []);
 
       const { data: tasksData } = await supabase.from('tasks').select('*');
-      setTasks(tasksData || []);
+      const scopedTasks = (tasksData || []).filter(
+        (t) => t.created_by === currentManagerId || 
+               teamEmployeeIds.includes(t.assigned_to) || 
+               t.assigned_to === currentManagerId
+      );
+      setTasks(scopedTasks);
 
+      const scopedTaskIds = scopedTasks.map((t) => t.id);
       const { data: logsData } = await supabase.from('time_logs').select('*');
-      setTimeLogs(logsData || []);
+      const scopedLogs = (logsData || []).filter(
+        (l) => scopedTaskIds.includes(l.task_id) || teamEmployeeIds.includes(l.user_id) || l.user_id === currentManagerId
+      );
+      setTimeLogs(scopedLogs);
     } catch (err) {
       console.error('Error loading analytics:', err);
     } finally {

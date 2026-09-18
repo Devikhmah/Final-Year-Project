@@ -77,7 +77,7 @@ function MainApp() {
       const userRole = data?.role || user?.user_metadata?.role || 'employee';
 
       if (userRole === 'manager') {
-        fetchPendingCount();
+        fetchPendingCount(user.id);
       }
       fetchRejectedCount(user.id, userRole);
     } catch (err) {
@@ -87,13 +87,31 @@ function MainApp() {
     }
   };
 
-  const fetchPendingCount = async () => {
+  const fetchPendingCount = async (managerId) => {
     try {
+      const mid = managerId || profile?.id || session?.user?.id;
+      if (!mid) return;
+
+      const { data: teamUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'employee')
+        .eq('manager_id', mid);
+
+      const teamEmployeeIds = (teamUsers || []).map((u) => u.id);
+
       const { data } = await supabase
         .from('tasks')
-        .select('id')
+        .select('id, created_by, assigned_to')
         .eq('status', 'submitted');
-      setPendingReviewCount((data || []).length);
+
+      const scopedPending = (data || []).filter(
+        (t) =>
+          t.created_by === mid ||
+          teamEmployeeIds.includes(t.assigned_to) ||
+          t.assigned_to === mid
+      );
+      setPendingReviewCount(scopedPending.length);
     } catch (err) {
       console.error('Pending count fetch error:', err);
     }

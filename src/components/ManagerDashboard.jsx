@@ -44,6 +44,7 @@ export default function ManagerDashboard({ userProfile, userSession }) {
         .eq('manager_id', currentManagerId)
         .order('full_name');
 
+      const teamEmployeeIds = (usersData || []).map((u) => u.id);
       setEmployees(usersData || []);
 
       const { data: tasksData } = await supabase
@@ -51,10 +52,20 @@ export default function ManagerDashboard({ userProfile, userSession }) {
         .select('*')
         .order('created_at', { ascending: false });
 
-      setTasks(tasksData || []);
+      // Scope tasks strictly to this manager's team
+      const scopedTasks = (tasksData || []).filter(
+        (t) => t.created_by === currentManagerId || 
+               teamEmployeeIds.includes(t.assigned_to) || 
+               t.assigned_to === currentManagerId
+      );
+      setTasks(scopedTasks);
 
+      const scopedTaskIds = scopedTasks.map((t) => t.id);
       const { data: logsData } = await supabase.from('time_logs').select('*');
-      setTimeLogs(logsData || []);
+      const scopedLogs = (logsData || []).filter(
+        (l) => scopedTaskIds.includes(l.task_id) || teamEmployeeIds.includes(l.user_id) || l.user_id === currentManagerId
+      );
+      setTimeLogs(scopedLogs);
 
       const { data: attData } = await supabase.from('task_attachments').select('*');
       const attMap = {};
@@ -343,6 +354,7 @@ export default function ManagerDashboard({ userProfile, userSession }) {
         onClose={() => setIsTaskModalOpen(false)}
         taskToEdit={taskToEdit}
         employees={employees}
+        currentManagerId={currentManagerId}
         onSaved={fetchData}
       />
 

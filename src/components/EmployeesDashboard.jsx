@@ -4,6 +4,25 @@ import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import TaskModal from './TaskModal';
 
+const INVITATION_SQL_SNIPPET = `-- Run this in Supabase SQL Editor:
+CREATE TABLE IF NOT EXISTS public.invitations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  manager_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  status TEXT CHECK (status IN ('pending', 'confirmed', 'declined')) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  responded_at TIMESTAMPTZ
+);
+ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Managers can manage invitations" ON public.invitations;
+DROP POLICY IF EXISTS "Anyone can view invitations by id" ON public.invitations;
+DROP POLICY IF EXISTS "Anyone can update invitation status by id" ON public.invitations;
+CREATE POLICY "Managers can manage invitations" ON public.invitations FOR ALL USING (manager_id = auth.uid());
+CREATE POLICY "Anyone can view invitations by id" ON public.invitations FOR SELECT USING (true);
+CREATE POLICY "Anyone can update invitation status by id" ON public.invitations FOR UPDATE USING (true);
+NOTIFY pgrst, 'reload schema';`;
+
 export default function EmployeesDashboard({ userProfile, userSession }) {
   const { themeTokens: t } = useTheme();
   const [employees, setEmployees] = useState([]);
@@ -26,6 +45,8 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
   const [copiedInviteId, setCopiedInviteId] = useState(null);
   const [inviteSuccessMsg, setInviteSuccessMsg] = useState('');
   const [inviteErrorMsg, setInviteErrorMsg] = useState('');
+  const [invitationTableMissing, setInvitationTableMissing] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
 
   const currentManagerId = userProfile?.id || userSession?.user?.id;
 
@@ -34,6 +55,12 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
       fetchData();
     }
   }, [currentManagerId]);
+
+  const handleCopySqlSnippet = () => {
+    navigator.clipboard.writeText(INVITATION_SQL_SNIPPET);
+    setSqlCopied(true);
+    setTimeout(() => setSqlCopied(false), 3000);
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,17 +74,43 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
         .order('full_name', { ascending: true });
 
       if (usersErr) throw usersErr;
+      setEmployees(usersData || []);
+
+      const teamEmployeeIds = (usersData || []).map((u) => u.id);
 
       // 2. Query pending/all invitations created by this manager
-      const { data: invData, error: invErr } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('manager_id', currentManagerId)
-        .order('created_at', { ascending: false });
+      try {
+        const { data: invData, error: invErr } = await supabase
+          .from('invitations')
+          .select('*')
+          .eq('manager_id', currentManagerId)
+          .order('created_at', { ascending: false });
 
-      if (invErr) throw invErr;
+        if (invErr) {
+          if (
+            invErr.message?.includes('schema cache') ||
+            invErr.message?.includes('invitations') ||
+            invErr.code === 'PGRST204' ||
+            invErr.code === '42P01'
+          ) {
+            console.warn('Invitations table not detected in schema cache:', invErr.message);
+            setInvitationTableMissing(true);
+            setInvitations([]);
+          } else {
+            console.error('Error fetching invitations:', invErr);
+            setInvitations([]);
+          }
+        } else {
+          setInvitationTableMissing(false);
+          setInvitations(invData || []);
+        }
+      } catch (e) {
+        console.warn('Invitations query caught exception:', e);
+        setInvitationTableMissing(true);
+        setInvitations([]);
+      }
 
-      // 3. Query tasks for workload computation
+      // 3. Query tasks for workload computation (strictly scoped to this manager's team)
       const { data: tasksData, error: tasksErr } = await supabase
         .from('tasks')
         .select('*')
@@ -65,9 +118,14 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
 
       if (tasksErr) throw tasksErr;
 
-      setEmployees(usersData || []);
-      setInvitations(invData || []);
-      setTasks(tasksData || []);
+      const scopedTasks = (tasksData || []).filter(
+        (t) =>
+          t.created_by === currentManagerId ||
+          teamEmployeeIds.includes(t.assigned_to) ||
+          t.assigned_to === currentManagerId
+      );
+
+      setTasks(scopedTasks);
     } catch (err) {
       console.error('Error fetching employees dashboard data:', err);
     } finally {
@@ -106,13 +164,27 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (
+          error.message?.includes('schema cache') ||
+          error.message?.includes('invitations') ||
+          error.code === 'PGRST204' ||
+          error.code === '42P01'
+        ) {
+          setInvitationTableMissing(true);
+          throw new Error(
+            "The 'public.invitations' table is missing from your Supabase database schema cache. Use the 'Copy SQL Migration Script' button below to copy the setup code, run it in your Supabase SQL Editor, and try again."
+          );
+        }
+        throw error;
+      }
 
       const inviteUrl = `${window.location.origin}?invite=${data.id}`;
 
       setInviteSuccessMsg(`Invitation created for ${data.name}! Share link: ${inviteUrl}`);
       setInviteName('');
       setInviteEmail('');
+      setInvitationTableMissing(false);
       fetchData();
     } catch (err) {
       setInviteErrorMsg(err.message || 'Failed to create invitation.');
@@ -288,6 +360,34 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
           </button>
         </div>
       </div>
+
+      {/* Schema Cache Alert Banner */}
+      {invitationTableMissing && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-200">Supabase Invitations Table Missing or Pending Schema Reload</p>
+              <p className="text-[11px] text-amber-300/80 mt-0.5">
+                PostgREST reported that <code className="bg-amber-950/60 px-1 py-0.5 rounded text-amber-200 font-mono">public.invitations</code> is not in the schema cache. Click below to copy the SQL setup script to run in your Supabase SQL Editor.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleCopySqlSnippet}
+            className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-xl text-amber-200 text-xs font-bold shrink-0 flex items-center gap-1.5 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+            </svg>
+            <span>{sqlCopied ? 'Copied SQL to Clipboard!' : 'Copy SQL Migration Script'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -674,6 +774,32 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
               </div>
             )}
 
+            {invitationTableMissing && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="font-semibold text-amber-200">Supabase Table Missing in Schema Cache</p>
+                    <p className="text-[11px] text-amber-300/90 mt-0.5">
+                      The <code className="bg-amber-950/60 px-1 py-0.5 rounded text-amber-200 font-mono">public.invitations</code> table needs to be created or reloaded in your Supabase database.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopySqlSnippet}
+                  className="w-full py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-lg text-amber-200 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                  </svg>
+                  <span>{sqlCopied ? 'Copied SQL to Clipboard!' : 'Copy SQL Migration Script'}</span>
+                </button>
+              </div>
+            )}
+
             {inviteSuccessMsg && (
               <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs space-y-2">
                 <p>{inviteSuccessMsg}</p>
@@ -737,6 +863,7 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
         employees={employees}
         defaultAssigneeId={selectedAssigneeId}
         onSaved={fetchData}
+        currentManagerId={currentManagerId}
       />
     </div>
   );
