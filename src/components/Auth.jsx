@@ -459,7 +459,7 @@ export default function Auth() {
                     required
                     value={managerCode}
                     onChange={(e) => setManagerCode(e.target.value)}
-                    placeholder="Enter management code (e.g. SME2026SECRET)"
+                    placeholder="Enter management registration code"
                     className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#006874] focus:ring-1 focus:ring-[#006874] text-xs transition-all"
                   />
                   <p className="text-[10px] text-amber-700">
