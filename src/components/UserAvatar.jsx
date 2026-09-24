@@ -25,7 +25,17 @@ export default function UserAvatar({
   };
 
   const selectedSizeClass = sizeClasses[size] || sizeClasses.md;
-  const initial = (name || 'U').trim().charAt(0).toUpperCase() || 'U';
+
+  // Sanitize name to prevent 'undefined' or 'null' from displaying
+  const displayName = typeof name === 'string' && name.trim() && name.trim() !== 'undefined' && name.trim() !== 'null'
+    ? name.trim()
+    : 'User';
+  const initial = displayName.charAt(0).toUpperCase() || 'U';
+
+  // Sanitize src URL
+  const validSrc = typeof src === 'string' && src.trim() && src.trim() !== 'undefined' && src.trim() !== 'null'
+    ? src.trim()
+    : null;
 
   // Reset image error state when src changes
   useEffect(() => {
@@ -34,17 +44,17 @@ export default function UserAvatar({
 
   return (
     <div className={`relative shrink-0 inline-flex items-center justify-center ${className}`}>
-      {src && !imageError ? (
+      {validSrc && !imageError ? (
         <img
-          src={src}
-          alt={`${name}'s avatar`}
+          src={validSrc}
+          alt={`${displayName}'s avatar`}
           onError={() => setImageError(true)}
           className={`${selectedSizeClass} object-cover shadow-sm border border-white/20 ring-1 ring-black/10 transition-all`}
         />
       ) : (
         <div
           className={`${selectedSizeClass} bg-[#D9A441] text-[#0D1B1E] flex items-center justify-center font-bold shadow-md shrink-0 border border-[#D9A441]/40 transition-all`}
-          title={name}
+          title={displayName}
         >
           {initial}
         </div>

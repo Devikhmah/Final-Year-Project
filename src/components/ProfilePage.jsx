@@ -176,65 +176,71 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     setAvatarErr('');
 
     try {
-      let publicUrl = '';
+      const effectiveUserId = userId || userProfile?.id || userSession?.user?.id;
 
-      // Try uploading to Supabase Storage bucket 'avatars'
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${userId}/${Date.now()}.${fileExt}`;
+      // 1. Convert to high-quality Data URL (guarantees instant, working preview)
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      let { error: uploadErr } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
+      let publicUrl = dataUrl;
 
-      if (uploadErr && uploadErr.message?.toLowerCase().includes('bucket not found')) {
-        await supabase.storage.createBucket('avatars', { public: true });
-        const retryRes = await supabase.storage
+      // 2. Try uploading to Supabase Storage bucket 'avatars' if available
+      try {
+        const fileExt = file.name ? file.name.split('.').pop() : 'png';
+        const filePath = `${effectiveUserId || 'user'}/${Date.now()}.${fileExt}`;
+
+        const { error: uploadErr } = await supabase.storage
           .from('avatars')
           .upload(filePath, file, { upsert: true });
-        uploadErr = retryRes.error;
+
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(filePath);
+          if (urlData?.publicUrl) {
+            publicUrl = urlData.publicUrl;
+          }
+        }
+      } catch (storageErr) {
+        console.warn('Storage bucket upload skipped, using Data URL fallback:', storageErr);
       }
 
-      if (!uploadErr) {
-        const { data: urlData } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(filePath);
-        publicUrl = urlData.publicUrl;
-      } else {
-        // Fallback to Data URL if storage bucket fails or isn't enabled
-        publicUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      // 1. Update Supabase Auth User Metadata
+      // 3. Update Supabase Auth User Metadata
       await supabase.auth.updateUser({
         data: { avatar_url: publicUrl },
       });
 
-      // 2. Update public.users table
-      const { error: dbErr } = await supabase
-        .from('users')
-        .update({ avatar_url: publicUrl })
-        .eq('id', userId);
+      // 4. Update public.users table
+      if (effectiveUserId) {
+        const { error: dbErr } = await supabase
+          .from('users')
+          .update({ avatar_url: publicUrl })
+          .eq('id', effectiveUserId);
 
-      if (dbErr && !dbErr.message?.includes('avatar_url')) {
-        console.warn('DB update note:', dbErr.message);
+        if (dbErr && !dbErr.message?.includes('avatar_url')) {
+          console.warn('DB update note:', dbErr.message);
+        }
       }
 
       setAvatarUrl(publicUrl);
       setAvatarMsg('✓ Profile picture updated successfully!');
 
-      if (onProfileUpdated && userSession?.user) {
-        onProfileUpdated(userSession.user);
+      if (onProfileUpdated && (userSession?.user || effectiveUserId)) {
+        onProfileUpdated(userSession?.user || { id: effectiveUserId });
       }
     } catch (err) {
       console.error('Avatar upload error:', err);
-      setAvatarErr('Failed to upload profile picture: ' + err.message);
+      const errMsg = err?.message || (typeof err === 'string' ? err : 'Please try another image.');
+      setAvatarErr('Failed to upload profile picture: ' + errMsg);
     } finally {
       setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -247,22 +253,31 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
     setAvatarErr('');
 
     try {
+      const effectiveUserId = userId || userProfile?.id || userSession?.user?.id;
+
       await supabase.auth.updateUser({
         data: { avatar_url: null },
       });
 
-      await supabase.from('users').update({ avatar_url: null }).eq('id', userId);
+      if (effectiveUserId) {
+        await supabase.from('users').update({ avatar_url: null }).eq('id', effectiveUserId);
+      }
 
       setAvatarUrl('');
       setAvatarMsg('✓ Profile picture removed. Default initials avatar restored.');
 
-      if (onProfileUpdated && userSession?.user) {
-        onProfileUpdated(userSession.user);
+      if (onProfileUpdated && (userSession?.user || effectiveUserId)) {
+        onProfileUpdated(userSession?.user || { id: effectiveUserId });
       }
     } catch (err) {
-      setAvatarErr('Failed to remove picture: ' + err.message);
+      console.error('Avatar removal error:', err);
+      const errMsg = err?.message || (typeof err === 'string' ? err : 'Unable to remove photo.');
+      setAvatarErr('Failed to remove picture: ' + errMsg);
     } finally {
       setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
