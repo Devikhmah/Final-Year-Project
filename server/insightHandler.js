@@ -2,22 +2,23 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 
+// Load from .env.local on module initialization if not already set in process.env
+try {
+  const envLocalPath = path.resolve(process.cwd(), '.env.local');
+  if (fs.existsSync(envLocalPath)) {
+    const envContent = fs.readFileSync(envLocalPath, 'utf8');
+    const match = envContent.match(/(?:(?:GEMINI_API_KEY|VITE_GEMINI_API_KEY))=(.*)/);
+    if (match && match[1] && !process.env.GEMINI_API_KEY) {
+      process.env.GEMINI_API_KEY = match[1].trim();
+    }
+  }
+} catch {
+  // Ignore read errors
+}
+
 function getApiKey() {
   if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
   if (process.env.VITE_GEMINI_API_KEY) return process.env.VITE_GEMINI_API_KEY;
-
-  try {
-    const envLocalPath = path.resolve(process.cwd(), '.env.local');
-    if (fs.existsSync(envLocalPath)) {
-      const envContent = fs.readFileSync(envLocalPath, 'utf8');
-      const match = envContent.match(/(?:(?:GEMINI_API_KEY|VITE_GEMINI_API_KEY))=(.*)/);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-  } catch {
-    // Ignore read errors
-  }
   return null;
 }
 
