@@ -70,19 +70,25 @@ Provide a high-level ${timeWindow.toLowerCase()} executive summary with the foll
     ],
   });
 
-  const modelsToTry = ['gemini-3.6-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  const modelsToTry = [
+    'gemini-1.5-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-pro',
+    'gemini-2.5-pro',
+  ];
+
+  let lastError = 'None of the attempted Gemini models were available.';
 
   for (const model of modelsToTry) {
     const result = await makeGeminiRequest(model, apiKey, requestBody);
     if (result.success) {
       return result;
     }
-    if (!result.is404) {
-      return result;
-    }
+    lastError = result.error || lastError;
   }
 
-  return { success: false, error: 'None of the attempted Gemini models were available.' };
+  return { success: false, error: lastError };
 }
 
 function makeGeminiRequest(model, apiKey, requestBody) {

@@ -7,6 +7,7 @@ export default function Auth() {
   const [tab, setTab] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [department, setDepartment] = useState('Sales');
   const [role, setRole] = useState('Employee'); // 'Employee' | 'Manager'
@@ -91,6 +92,26 @@ export default function Auth() {
       if (tab === 'signup') {
         if (!fullName.trim()) {
           throw new Error('Please enter your full name');
+        }
+
+        // Password complexity validation: alphanumeric, 8+ characters, at least one special character
+        const hasMinLength = password.length >= 8;
+        const hasLetter = /[a-zA-Z]/.test(password);
+        const hasNumber = /[0-9]/.test(password);
+        const hasSpecial = /[^a-zA-Z0-9]/.test(password);
+
+        if (!hasMinLength) {
+          throw new Error('Password must be at least 8 characters long.');
+        }
+        if (!hasLetter || !hasNumber) {
+          throw new Error('Password must be alphanumeric (contain both letters and numbers).');
+        }
+        if (!hasSpecial) {
+          throw new Error('Password must contain at least one special character (e.g. !@#$%^&*).');
+        }
+
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match. Please re-enter your password.');
         }
 
         const normalizedRole = inviteInfo ? 'employee' : role.toLowerCase();
@@ -183,13 +204,12 @@ export default function Auth() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex items-center justify-center p-4 sm:p-6 lg:p-12 font-sans">
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center">
-        
+
         {/* Left Hero & Value Proposition Panel */}
         <div className="lg:col-span-7 space-y-7">
           {/* Badge */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-[11px] font-medium text-slate-700 shadow-xs">
             <Shield className="w-3.5 h-3.5 text-slate-600" />
-            <span>Non-surveillance by design</span>
           </div>
 
           {/* Headline */}
@@ -198,8 +218,8 @@ export default function Auth() {
               Measure output, not activity.
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed max-w-xl">
-              Cadence gives small and medium businesses empirical productivity insight — task completion velocity,
-              revenue vs. admin time mix, and honest capacity signals — built entirely on voluntary, self-reported
+              Cadence gives small and medium businesses empirical productivity insight task completion velocity,
+              revenue & admin time mix, and honest capacity signals built entirely on voluntary, self-reported
               task time. No screen recording, no keystrokes, no tracking.
             </p>
           </div>
@@ -272,8 +292,8 @@ export default function Auth() {
                     ? 'Sign in to join team'
                     : 'Create account & join team'
                   : tab === 'signin'
-                  ? 'Sign in to Cadence'
-                  : 'Create an account'}
+                    ? 'Sign in to Cadence'
+                    : 'Create an account'}
               </h2>
               <p className="text-xs text-slate-500">
                 Use your work email to access your tasks and analytics.
@@ -285,22 +305,20 @@ export default function Auth() {
               <button
                 type="button"
                 onClick={() => { setTab('signin'); setErrorMsg(''); setSuccessMsg(''); }}
-                className={`py-1.5 text-xs font-semibold rounded-lg transition-all focus:outline-none ${
-                  tab === 'signin'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`py-1.5 text-xs font-semibold rounded-lg transition-all focus:outline-none ${tab === 'signin'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Sign in
               </button>
               <button
                 type="button"
                 onClick={() => { setTab('signup'); setErrorMsg(''); setSuccessMsg(''); }}
-                className={`py-1.5 text-xs font-semibold rounded-lg transition-all focus:outline-none ${
-                  tab === 'signup'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`py-1.5 text-xs font-semibold rounded-lg transition-all focus:outline-none ${tab === 'signup'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Create account
               </button>
@@ -379,13 +397,36 @@ export default function Auth() {
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={tab === 'signup' ? 8 : 6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={tab === 'signup' ? 'Min 8 chars, letter, num & special' : '••••••••'}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#006874] focus:ring-1 focus:ring-[#006874] text-xs transition-all"
                 />
+                {tab === 'signup' && (
+                  <p className="text-[10px] text-slate-500">
+                    Must be 8+ characters, include letters, numbers, and at least one special character (!@#$%^&*).
+                  </p>
+                )}
               </div>
+
+              {/* Confirm Password (Signup only) */}
+              {tab === 'signup' && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter your password"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#006874] focus:ring-1 focus:ring-[#006874] text-xs transition-all"
+                  />
+                </div>
+              )}
 
               {/* Role Dropdown in Signup */}
               {tab === 'signup' && (
