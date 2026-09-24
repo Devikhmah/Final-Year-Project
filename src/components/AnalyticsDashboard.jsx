@@ -133,17 +133,94 @@ export default function AnalyticsDashboard({ userProfile, userSession }) {
     };
 
     try {
-      const response = await fetch('/api/generate-insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let insightText = null;
+      let errorMessage = null;
 
-      const result = await response.json();
-      if (result.success) {
-        setAiInsight(result.insightText);
+      try {
+        const response = await fetch('/api/generate-insight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            insightText = result.insightText;
+          } else {
+            errorMessage = result.error;
+          }
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          errorMessage = errData.error || `Server responded with ${response.status}`;
+        }
+      } catch (apiErr) {
+        console.warn('Backend /api/generate-insight unreachable, trying direct client fallback:', apiErr);
+      }
+
+      // Direct Client-Side Fallback if backend API returned an error and client key exists
+      if (!insightText) {
+        const clientApiKey = import.meta.env?.VITE_GEMINI_API_KEY;
+        if (clientApiKey) {
+          const promptText = `You are an executive workforce productivity analyst for Small and Medium Enterprises (SMEs).
+Analyze the following anonymized workforce metrics for ${payload.timeWindow}:
+
+- Period: ${payload.timeWindow}
+- Total Tasks Assigned: ${payload.metrics.assignedCount || 0}
+- Manager Approved Completed Tasks: ${payload.metrics.approvedCount || 0}
+- Finished On-Time: ${payload.metrics.onTimeCount || 0}
+- Finished Overdue: ${payload.metrics.overdueCount || 0}
+- Tasks Awaiting Review (Bottleneck): ${payload.metrics.submittedBottleneckCount || 0}
+- Total Logged Work Hours: ${payload.metrics.totalHoursLogged || 0}
+
+Anonymized Employee Capacity & Workload Summaries:
+${JSON.stringify(payload.employeeSummaries, null, 2)}
+
+Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with the following sections:
+1. Overall Velocity & Delivery Performance (2-3 sentences evaluating throughput vs deadlines).
+2. Workload & Bottleneck Analysis (highlighting any pending reviews or employee overload/idle signals).
+3. 2 Concrete, Actionable Next Steps for Management for the upcoming period.`;
+
+          const activeModels = [
+            'gemini-3.6-flash',
+            'gemini-3.7-flash',
+            'gemini-3.5-flash',
+            'gemini-flash-latest',
+            'gemini-3.1-flash-lite',
+            'gemini-3.1-pro-preview',
+          ];
+
+          for (const model of activeModels) {
+            try {
+              const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${clientApiKey}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }),
+                }
+              );
+              if (res.ok) {
+                const data = await res.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                  insightText = text;
+                  errorMessage = null;
+                  break;
+                }
+              }
+            } catch {
+              // try next model
+            }
+          }
+        }
+      }
+
+      if (insightText) {
+        setAiInsight(insightText);
+        setAiError('');
       } else {
-        setAiError(result.error || 'Unable to generate executive insight at this moment.');
+        setAiError(errorMessage || 'Unable to generate executive insight at this moment.');
       }
     } catch (err) {
       setAiError('Unable to generate executive insight at this moment: ' + err.message);
