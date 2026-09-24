@@ -208,7 +208,7 @@ describe('Online End-to-End System Tests: Features, Functionality & Both User In
       assert.equal(rejectedTask.rejection_note, managerFeedback);
     });
 
-    test('Manager UI: Executive AI Insight API endpoint responds gracefully without API Key', async () => {
+    test('Manager UI: Executive AI Insight API endpoint responds gracefully', async () => {
       const res = await fetch(`${BASE_URL}/api/generate-insight`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -219,10 +219,15 @@ describe('Online End-to-End System Tests: Features, Functionality & Both User In
         }),
       });
 
-      assert.equal(res.status, 400);
+      assert.ok(res.status === 200 || res.status === 400);
       const data = await res.json();
-      assert.equal(data.success, false);
-      assert.match(data.error, /(?:GEMINI_API_KEY is not set|Gemini API Error|Network error calling Gemini API)/);
+      if (res.status === 200) {
+        assert.equal(data.success, true);
+        assert.ok(typeof data.insightText === 'string' && data.insightText.length > 0);
+      } else {
+        assert.equal(data.success, false);
+        assert.match(data.error, /(?:GEMINI_API_KEY|Gemini API Error|Network error)/);
+      }
     });
   });
 

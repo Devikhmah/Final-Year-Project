@@ -119,8 +119,14 @@ export default function AnalyticsDashboard({ userProfile, userSession }) {
       };
     });
 
+    const clientApiKey =
+      localStorage.getItem('cadence_gemini_api_key') ||
+      import.meta.env?.VITE_GEMINI_API_KEY ||
+      '';
+
     const payload = {
       timeWindow: timeWindow === 'week' ? 'This Week' : 'This Month',
+      apiKey: clientApiKey,
       metrics: {
         assignedCount: windowTasks.length,
         approvedCount: approvedCompleted.length,
@@ -160,7 +166,6 @@ export default function AnalyticsDashboard({ userProfile, userSession }) {
 
       // Direct Client-Side Fallback if backend API returned an error and client key exists
       if (!insightText) {
-        const clientApiKey = import.meta.env?.VITE_GEMINI_API_KEY;
         if (clientApiKey) {
           const promptText = `You are an executive workforce productivity analyst for Small and Medium Enterprises (SMEs).
 Analyze the following anonymized workforce metrics for ${payload.timeWindow}:

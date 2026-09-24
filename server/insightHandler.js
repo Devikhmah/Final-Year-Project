@@ -36,11 +36,11 @@ export async function handleGenerateInsight(reqData) {
     };
   }
 
-  const apiKey = getApiKey();
+  const apiKey = reqData.apiKey || getApiKey();
   if (!apiKey) {
     return {
       success: false,
-      error: 'GEMINI_API_KEY is not set in environment variables. Please add GEMINI_API_KEY=your_key to your .env.local file.',
+      error: 'GEMINI_API_KEY is not set in environment variables. Please add GEMINI_API_KEY=your_key to your .env.local file or configure it in Settings.',
     };
   }
 
@@ -72,11 +72,12 @@ Provide a high-level ${timeWindow.toLowerCase()} executive summary with the foll
   });
 
   const modelsToTry = [
-    'gemini-1.5-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-pro',
-    'gemini-2.5-pro',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview',
   ];
 
   let lastError = 'None of the attempted Gemini models were available.';
@@ -100,6 +101,7 @@ function makeGeminiRequest(model, apiKey, requestBody) {
       url,
       {
         method: 'POST',
+        rejectUnauthorized: false,
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(requestBody),
