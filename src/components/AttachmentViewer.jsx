@@ -140,26 +140,121 @@ export default function AttachmentViewer({ attachments = [] }) {
     };
   };
 
+  const [downloadingId, setDownloadingId] = React.useState(null);
+
+  const handleDownload = async (att, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!att?.file_url) return;
+
+    const fileName = att.file_name || 'proof-of-completion';
+    setDownloadingId(att.id);
+
+    try {
+      if (att.file_url.startsWith('data:')) {
+        const link = document.createElement('a');
+        link.href = att.file_url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        const response = await fetch(att.file_url);
+        if (!response.ok) throw new Error('Fetch failed');
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      }
+    } catch (err) {
+      console.warn('Direct blob download error, triggering browser direct link:', err);
+      const link = document.createElement('a');
+      link.href = att.file_url;
+      link.target = '_blank';
+      link.download = fileName;
+      link.rel = 'noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setTimeout(() => setDownloadingId(null), 600);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    for (let i = 0; i < attachments.length; i++) {
+      await handleDownload(attachments[i]);
+      // Small stagger between multiple downloads
+      await new Promise((res) => setTimeout(res, 300));
+    }
+  };
+
   return (
-    <div className="space-y-1.5 pt-1">
-      <p className={`text-[10px] font-bold uppercase tracking-wider ${t.muted}`}>
-        Proof Attachments ({attachments.length}):
-      </p>
+    <div className="space-y-2 pt-1">
+      <div className="flex items-center justify-between">
+        <p className={`text-[10px] font-bold uppercase tracking-wider ${t.muted}`}>
+          Proof of Completion ({attachments.length}):
+        </p>
+        {attachments.length > 1 && (
+          <button
+            type="button"
+            onClick={handleDownloadAll}
+            className="text-[10px] font-bold text-[#D9A441] hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+            title="Download all attached proof files"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Download All ({attachments.length})</span>
+          </button>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {attachments.map((att) => {
           const { icon, label, color } = renderFileIcon(att.file_name, att.file_type);
+          const isDownloading = downloadingId === att.id;
+
           return (
-            <a
+            <div
               key={att.id}
-              href={att.file_url}
-              target="_blank"
-              rel="noreferrer"
-              title={`View/Download ${label}: ${att.file_name || 'Proof File'}`}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all text-xs font-medium ${color} hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[#D9A441] shadow-sm`}
+              className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg border transition-all text-xs font-medium ${color} shadow-sm group`}
             >
               {icon}
-              <span className="truncate max-w-[140px]">{att.file_name || 'Proof File'}</span>
-            </a>
+              <a
+                href={att.file_url}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open/Preview ${label}: ${att.file_name || 'Proof File'}`}
+                className="truncate max-w-[130px] hover:underline cursor-pointer"
+              >
+                {att.file_name || 'Proof File'}
+              </a>
+
+              {/* Explicit Download Action Button */}
+              <button
+                type="button"
+                onClick={(e) => handleDownload(att, e)}
+                disabled={isDownloading}
+                title={`Download ${att.file_name || 'Proof File'}`}
+                className="p-1 rounded hover:bg-black/20 text-current opacity-80 hover:opacity-100 transition-all cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#D9A441]"
+              >
+                {isDownloading ? (
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                )}
+              </button>
+            </div>
           );
         })}
       </div>
