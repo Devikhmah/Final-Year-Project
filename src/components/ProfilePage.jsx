@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import UserAvatar from './UserAvatar';
 
 export default function ProfilePage({ userProfile, userSession, onProfileUpdated }) {
-  const { theme, setTheme, themeTokens: t } = useTheme();
+  const { theme, themeMode, setTheme, themeTokens: t } = useTheme();
   const fileInputRef = useRef(null);
 
   const userId = userSession?.user?.id;
