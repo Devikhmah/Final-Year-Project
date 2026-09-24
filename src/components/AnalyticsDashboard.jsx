@@ -318,7 +318,7 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
           <button
             onClick={handleGenerateInsight}
             disabled={generatingInsight}
-            className="px-4 py-2 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow flex items-center gap-2 disabled:opacity-50"
+            className="px-4 py-2 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-xl transition-all shadow disabled:opacity-50"
           >
             <span>
               {generatingInsight
@@ -327,19 +327,13 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
                 ? 'Generate Weekly Insight'
                 : 'Generate Monthly Insight'}
             </span>
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
           </button>
 
           <button
             onClick={handleSeedSampleData}
-            className={`px-3 py-2 ${t.accentBg} ${t.text} text-xs font-bold rounded-xl border ${t.border} transition-all hover:opacity-80 flex items-center gap-1.5` }
+            className={`px-3 py-2 ${t.accentBg} ${t.text} text-xs font-bold rounded-xl border ${t.border} transition-all hover:opacity-80`}
           >
             <span>Add Sample Data</span>
-            <svg className="w-4 h-4 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
           </button>
 
           <div className={`flex items-center gap-1 p-1 ${t.inputBg} rounded-xl border ${t.border} text-xs`}>
@@ -368,7 +362,7 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-[#D9A441] border-t-transparent rounded-full animate-spin"></div>
             <span className="text-sm font-bold text-[#D9A441]">
-              Analyzing workforce metrics & generating AI ${timeWindow === 'week' ? 'weekly' : 'monthly'} insight...
+              Analyzing workforce metrics & generating AI {timeWindow === 'week' ? 'weekly' : 'monthly'} insight...
             </span>
           </div>
         </div>
@@ -379,9 +373,6 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[#D9A441] font-bold text-sm">
               <span>AI Insight Call Notice</span>
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
             </div>
             <button
               onClick={() => setAiError(null)}
@@ -398,9 +389,6 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
         <div className="bg-[#1B4B4F]/20 border border-[#D9A441]/40 p-6 rounded-2xl space-y-4 shadow-lg">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#D9A441]/20">
             <div className="flex items-center gap-2 text-[#D9A441] font-bold text-sm">
-              <svg className="w-5 h-5 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-              </svg>
               <span>Gemini AI Executive {timeWindow === 'week' ? 'Weekly' : 'Monthly'} Productivity Insight</span>
             </div>
 
@@ -408,59 +396,37 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
               <button
                 type="button"
                 onClick={() => handleDownloadInsight('txt')}
-                className="px-3 py-1.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-lg transition-all shadow-sm cursor-pointer"
                 title="Download Executive Summary as Text Report (.txt)"
               >
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
                 <span>Download (.txt)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleDownloadInsight('md')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm cursor-pointer"
                 title="Download Executive Summary as Markdown (.md)"
               >
-                <svg className="w-3.5 h-3.5 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
                 <span>Markdown (.md)</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleCopyInsight}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm cursor-pointer"
                 title="Copy Insight Text to Clipboard"
               >
-                {copiedInsight ? (
-                  <>
-                    <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="text-emerald-400">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                    <span>Copy</span>
-                  </>
-                )}
+                <span>{copiedInsight ? 'Copied!' : 'Copy'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setAiInsight(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-black/20 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-black/20 transition-colors text-xs font-bold cursor-pointer"
                 title="Dismiss Insight"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
           </div>
