@@ -16,6 +16,50 @@ export default function AnalyticsDashboard({ userProfile, userSession }) {
   const [generatingInsight, setGeneratingInsight] = useState(false);
   const [aiInsight, setAiInsight] = useState(null);
   const [aiError, setAiError] = useState(null);
+  const [copiedInsight, setCopiedInsight] = useState(false);
+
+  const handleDownloadInsight = (format = 'txt') => {
+    if (!aiInsight) return;
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const periodStr = timeWindow === 'week' ? 'Weekly' : 'Monthly';
+    const extension = format === 'md' ? 'md' : 'txt';
+    const fileName = `Cadence_AI_Executive_${periodStr}_Productivity_Summary_${dateStr}.${extension}`;
+
+    const reportHeader = `================================================================================
+CADENCE WORKFORCE PRODUCTIVITY SYSTEM
+EXECUTIVE ${periodStr.toUpperCase()} PRODUCTIVITY & WORKLOAD INSIGHT
+Generated on: ${new Date().toLocaleString()}
+Period: ${timeWindow === 'week' ? 'This Week' : 'This Month'}
+================================================================================\n\n`;
+
+    const fullContent =
+      reportHeader +
+      aiInsight +
+      '\n\n' +
+      `--------------------------------------------------------------------------------\nCadence Productivity Portal • Powered by Google Gemini AI\n`;
+
+    const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleCopyInsight = async () => {
+    if (!aiInsight) return;
+    try {
+      await navigator.clipboard.writeText(aiInsight);
+      setCopiedInsight(true);
+      setTimeout(() => setCopiedInsight(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
 
   const currentManagerId = userProfile?.id || userSession?.user?.id;
 
@@ -351,22 +395,77 @@ Provide a high-level ${payload.timeWindow.toLowerCase()} executive summary with 
       )}
 
       {aiInsight && (
-        <div className="bg-[#1B4B4F]/20 border border-[#D9A441]/40 p-6 rounded-2xl space-y-3 shadow-lg">
-          <div className="flex items-center justify-between">
+        <div className="bg-[#1B4B4F]/20 border border-[#D9A441]/40 p-6 rounded-2xl space-y-4 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#D9A441]/20">
             <div className="flex items-center gap-2 text-[#D9A441] font-bold text-sm">
-              <span>Gemini AI Executive ${timeWindow === 'week' ? 'Weekly' : 'Monthly'} Productivity Insight</span>
-              <svg className="w-4 h-4 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
               </svg>
+              <span>Gemini AI Executive {timeWindow === 'week' ? 'Weekly' : 'Monthly'} Productivity Insight</span>
             </div>
-            <button
-              onClick={() => setAiInsight(null)}
-              className="text-xs text-slate-400 hover:text-white"
-            >
-              ✕
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDownloadInsight('txt')}
+                className="px-3 py-1.5 bg-[#D9A441] hover:bg-[#C59336] text-[#0D1B1E] text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Download Executive Summary as Text Report (.txt)"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Download (.txt)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDownloadInsight('md')}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Download Executive Summary as Markdown (.md)"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0 text-[#D9A441]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Markdown (.md)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyInsight}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                title="Copy Insight Text to Clipboard"
+              >
+                {copiedInsight ? (
+                  <>
+                    <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAiInsight(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-black/20 transition-colors cursor-pointer"
+                title="Dismiss Insight"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium">
+
+          <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap font-medium">
             {aiInsight}
           </div>
         </div>
