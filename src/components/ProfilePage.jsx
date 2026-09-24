@@ -166,8 +166,8 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarErr('Image file size must be less than 5MB.');
+    if (file.size > 1 * 1024 * 1024) {
+      setAvatarErr('Image file size must be less than 1MB.');
       return;
     }
 
@@ -467,7 +467,7 @@ export default function ProfilePage({ userProfile, userSession, onProfileUpdated
               )}
             </div>
 
-            <p className={`text-[11px] ${t.muted} mt-1.5`}>Supported: PNG, JPG, WEBP, GIF (Maximum upload size: 5MB)</p>
+            <p className={`text-[11px] ${t.muted} mt-1.5`}>Supported: PNG, JPG, WEBP, GIF (Maximum upload size: 1MB)</p>
 
             {avatarMsg && <p className="text-xs font-semibold text-emerald-400 mt-2">{avatarMsg}</p>}
             {avatarErr && <p className="text-xs font-semibold text-rose-400 mt-2">{avatarErr}</p>}

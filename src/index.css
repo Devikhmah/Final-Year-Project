@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --color-sme-teal: #1B4B4F;
   --color-sme-teal-dark: #123336;
   --color-sme-teal-hover: #153B3E;
@@ -13,6 +14,10 @@
 }
 
 @layer base {
+  :root, html, body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
   body {
     @apply antialiased font-sans min-h-screen bg-[#000000];
   }
