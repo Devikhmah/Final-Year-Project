@@ -163,10 +163,7 @@ Period: ${timeWindow === 'week' ? 'This Week' : 'This Month'}
       };
     });
 
-    const clientApiKey =
-      localStorage.getItem('cadence_gemini_api_key') ||
-      import.meta.env?.VITE_GEMINI_API_KEY ||
-      '';
+    const clientApiKey = localStorage.getItem('cadence_gemini_api_key') || '';
 
     const payload = {
       timeWindow: timeWindow === 'week' ? 'This Week' : 'This Month',
