@@ -1,3 +1,9 @@
+
+-- Non-recursive helper for employee manager scoping
+CREATE OR REPLACE FUNCTION public.get_my_manager_id() 
+RETURNS UUID AS $$
+  SELECT manager_id FROM public.users WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
 -- Workforce Productivity Analytics & Task Management System
 -- Part 9: Multi-Manager Team Scoping & Invitation System Setup
 
@@ -106,7 +112,7 @@ CREATE POLICY "Users can view profiles"
   USING (
     id = auth.uid() 
     OR (public.is_manager() AND role = 'employee' AND manager_id = auth.uid())
-    OR (id = (SELECT manager_id FROM public.users WHERE id = auth.uid()))
+    OR (id = public.get_my_manager_id())
   );
 
 CREATE POLICY "Users can insert profile"

@@ -66,70 +66,30 @@ export default function EmployeesDashboard({ userProfile, userSession }) {
 
   const fetchData = async () => {
     setLoading(true);
+    const safetyTimer = setTimeout(() => setLoading(false), 3500);
+
     try {
-      // 1. Query users belonging specifically to this manager's team
-      const { data: usersData, error: usersErr } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', 'employee')
-        .eq('manager_id', currentManagerId)
-        .order('full_name', { ascending: true });
+      const [usersRes, invRes, tasksRes] = await Promise.allSettled([
+        supabase.from('users').select('*').eq('role', 'employee').eq('manager_id', currentManagerId).order('full_name', { ascending: true }),
+        supabase.from('invitations').select('*').eq('manager_id', currentManagerId).order('created_at', { ascending: false }),
+        supabase.from('tasks').select('*').eq('created_by', currentManagerId).order('created_at', { ascending: false }),
+      ]);
 
-      if (usersErr) throw usersErr;
-      setEmployees(usersData || []);
+      const usersData = usersRes.status === 'fulfilled' && usersRes.value.data ? usersRes.value.data : [];
+      setEmployees(usersData);
 
-      const teamEmployeeIds = (usersData || []).map((u) => u.id);
+      const invData = invRes.status === 'fulfilled' && invRes.value.data ? invRes.value.data : [];
+      setInvitations(invData);
 
-      // 2. Query pending/all invitations created by this manager
-      let combinedInvites = [];
-      try {
-        const { data: invData, error: invErr } = await supabase
-          .from('invitations')
-          .select('*')
-          .eq('manager_id', currentManagerId)
-          .order('created_at', { ascending: false });
-
-        if (!invErr && invData) {
-          combinedInvites = invData;
-        }
-      } catch (e) {
-        // Invitations table may not exist in schema cache, handled via direct invite storage
-      }
-
-      // Merge local fallback invitations
-      try {
-        const localInvites = JSON.parse(localStorage.getItem(`cadence_direct_invites_${currentManagerId}`) || '[]');
-        const existingEmails = new Set([
-          ...combinedInvites.map((i) => i.email?.toLowerCase()),
-          ...(usersData || []).map((u) => u.email?.toLowerCase()),
-        ]);
-        const validLocal = localInvites.filter((li) => !existingEmails.has(li.email?.toLowerCase()));
-        combinedInvites = [...combinedInvites, ...validLocal];
-      } catch (e) {}
-
-      setInvitations(combinedInvites);
-
-      // 3. Query tasks for workload computation (strictly scoped to this manager's team)
-      const { data: tasksData, error: tasksErr } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (tasksErr) throw tasksErr;
-
-      const scopedTasks = (tasksData || []).filter(
-        (t) =>
-          t.created_by === currentManagerId ||
-          teamEmployeeIds.includes(t.assigned_to) ||
-          t.assigned_to === currentManagerId
-      );
-
-      setTasks(scopedTasks);
+      const tasksData = tasksRes.status === 'fulfilled' && tasksRes.value.data ? tasksRes.value.data : [];
+      setTasks(tasksData);
     } catch (err) {
-      console.error('Error fetching employees dashboard data:', err);
+      console.error('Error fetching team roster:', err);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
+  };
   };
 
   const handleCreateInvitation = async (e) => {

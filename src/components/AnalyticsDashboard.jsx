@@ -71,36 +71,38 @@ Period: ${timeWindow === 'week' ? 'This Week' : 'This Month'}
 
   const fetchData = async () => {
     setLoading(true);
+    const safetyTimer = setTimeout(() => setLoading(false), 3500);
+
     try {
-      // Query users belonging specifically to this manager's team
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', 'employee')
-        .eq('manager_id', currentManagerId);
+      const [usersRes, tasksRes, logsRes] = await Promise.allSettled([
+        supabase.from('users').select('*').eq('role', 'employee').eq('manager_id', currentManagerId),
+        supabase.from('tasks').select('*').order('created_at', { ascending: false }),
+        supabase.from('time_logs').select('*'),
+      ]);
 
-      const teamEmployeeIds = (usersData || []).map((u) => u.id);
-      setEmployees(usersData || []);
+      const usersData = usersRes.status === 'fulfilled' && usersRes.value.data ? usersRes.value.data : [];
+      const teamEmployeeIds = usersData.map((u) => u.id);
+      setEmployees(usersData);
 
-      const { data: tasksData } = await supabase.from('tasks').select('*');
-      const scopedTasks = (tasksData || []).filter(
-        (t) => t.created_by === currentManagerId || 
-               teamEmployeeIds.includes(t.assigned_to) || 
-               t.assigned_to === currentManagerId
+      const rawTasks = tasksRes.status === 'fulfilled' && tasksRes.value.data ? tasksRes.value.data : [];
+      const scopedTasks = rawTasks.filter(
+        (t) => t.created_by === currentManagerId || teamEmployeeIds.includes(t.assigned_to) || t.assigned_to === currentManagerId
       );
       setTasks(scopedTasks);
 
       const scopedTaskIds = scopedTasks.map((t) => t.id);
-      const { data: logsData } = await supabase.from('time_logs').select('*');
-      const scopedLogs = (logsData || []).filter(
+      const rawLogs = logsRes.status === 'fulfilled' && logsRes.value.data ? logsRes.value.data : [];
+      const scopedLogs = rawLogs.filter(
         (l) => scopedTaskIds.includes(l.task_id) || teamEmployeeIds.includes(l.user_id) || l.user_id === currentManagerId
       );
       setTimeLogs(scopedLogs);
     } catch (err) {
-      console.error('Error loading analytics:', err);
+      console.error('Error fetching analytics:', err);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
+  };
   };
 
   const handleTimeWindowChange = (newWindow) => {
